@@ -15,6 +15,10 @@ export enum Permission {
   ContentWrite = 'content.write',
   ContentReview = 'content.review',
   AnalyticsRead = 'analytics.read',
+  CatalogRead = 'catalog.read',
+  CatalogWrite = 'catalog.write',
+  /** Xác minh link affiliate do người dùng tự nhập (bước kiểm tra của con người). */
+  LinksVerify = 'links.verify',
 }
 
 const P = Permission;
@@ -24,10 +28,11 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlyArray<Permission>>>
   [Role.Admin]: [
     P.MembersManage, P.OfficeRead, P.OfficeControl,
     P.ContentRead, P.ContentWrite, P.ContentReview, P.AnalyticsRead,
+    P.CatalogRead, P.CatalogWrite, P.LinksVerify,
   ],
-  [Role.ContentEditor]: [P.OfficeRead, P.ContentRead, P.ContentWrite],
-  [Role.Reviewer]: [P.OfficeRead, P.ContentRead, P.ContentReview],
-  [Role.Analyst]: [P.OfficeRead, P.ContentRead, P.AnalyticsRead],
+  [Role.ContentEditor]: [P.OfficeRead, P.ContentRead, P.ContentWrite, P.CatalogRead, P.CatalogWrite],
+  [Role.Reviewer]: [P.OfficeRead, P.ContentRead, P.ContentReview, P.CatalogRead, P.LinksVerify],
+  [Role.Analyst]: [P.OfficeRead, P.ContentRead, P.AnalyticsRead, P.CatalogRead],
 };
 
 export function hasPermission(role: Role, permission: Permission): boolean {

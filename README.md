@@ -35,6 +35,31 @@ Sau đó `npm install` (có thêm `@nestjs/jwt`, `@nestjs/throttler`, `helmet`) 
 
 Mọi route đều cần đăng nhập trừ route gắn `@Public()`. Người không thuộc tổ chức nhận 404; thuộc tổ chức nhưng thiếu quyền nhận 403.
 
+## Phase 3a: sản phẩm và link affiliate
+
+Thêm migration 004 (`affiliate_connections`, `products`, `affiliate_links`). Chạy `npm run migration:run`.
+**Shopee hiện là GIẢ LẬP (mock)**; tích hợp chính thức chưa triển khai. Dữ liệu giả có tiền tố `[MOCK]`, link giả dùng tên miền `.invalid`.
+
+| Phương thức | Đường dẫn (sau `/organizations/:orgId`) | Ghi chú |
+|---|---|---|
+| POST/GET | `/affiliate-connections` | tạo kết nối GIẢ LẬP / liệt kê |
+| GET | `/products?search=&limit=&offset=` | danh sách, kèm điểm giải thích được |
+| POST | `/products` | thêm/cập nhật 1 sản phẩm nhập tay |
+| POST | `/products/import` | nhập CSV `{ "csv": "...", "dryRun": true }` (tối đa 500 dòng, 50.000 ký tự) |
+| POST | `/products/sync` | đồng bộ từ Shopee giả `{ "connectionId": "..." }` |
+| GET | `/products/:productId`, `/products/:productId/links` | chi tiết / link của sản phẩm |
+| POST | `/products/:productId/links` | đăng ký link bạn tự có (trạng thái UNVERIFIED) |
+| POST | `/products/:productId/links/generate` | tạo link qua nhà cung cấp (giả lập, nguồn MOCK) |
+| POST | `/affiliate-links/:linkId/verify` | xác minh link tự nhập: UNVERIFIED -> ACTIVE (OWNER/ADMIN/REVIEWER) |
+| POST | `/affiliate-links/:linkId/revoke` | thu hồi link |
+
+Cột CSV: bắt buộc `external_product_id,name,product_url`; tùy chọn `description,category,image_url,price,currency,commission_rate`.
+Giá dùng dấu chấm thập phân, không dùng dấu phân cách hàng nghìn; có `price` thì phải có `currency`.
+Ô trống nghĩa là CHƯA BIẾT (khác 0) và không xóa giá trị đã biết khi nhập lại.
+
+Quyết định thiết kế: `products` có `organization_id` (khác phác thảo đầu) để tổ chức này không ghi đè dữ liệu của tổ chức khác.
+Danh sách tên miền link affiliate được phép nằm trong `affiliate-link-url.ts` và là giả định chưa xác minh với tài liệu Shopee.
+
 ## Chạy thử (máy của bạn)
 
 Yêu cầu: Node 22, Docker.
@@ -64,5 +89,5 @@ băm mật khẩu, token, vai trò/quyền, slug, chính sách refresh token (qu
 
 ## Chưa làm (Phase sau)
 
-Shopee/media (Phase 3), AI + duyệt (Phase 4), đăng Threads (Phase 5),
+Media và giấy phép (Phase 3b), tích hợp Shopee chính thức, AI + duyệt (Phase 4), đăng Threads (Phase 5),
 analytics + n8n (Phase 6), ESLint, integration test, Dockerfile cho ứng dụng.

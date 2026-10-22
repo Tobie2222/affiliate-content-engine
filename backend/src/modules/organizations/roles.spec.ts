@@ -55,6 +55,23 @@ describe('quyền theo vai trò', () => {
     expect(hasPermission(Role.Analyst, Permission.ContentWrite)).toBe(false);
   });
 
+  it('danh mục sản phẩm: mọi vai trò xem được; chỉ OWNER, ADMIN, CONTENT_EDITOR sửa được', () => {
+    for (const role of ALL_ROLES) {
+      expect(hasPermission(role, Permission.CatalogRead)).toBe(true);
+      expect(hasPermission(role, Permission.CatalogWrite)).toBe(
+        role === Role.Owner || role === Role.Admin || role === Role.ContentEditor,
+      );
+    }
+  });
+
+  it('xác minh link affiliate chỉ thuộc OWNER, ADMIN, REVIEWER (người soạn không tự xác minh)', () => {
+    for (const role of ALL_ROLES) {
+      expect(hasPermission(role, Permission.LinksVerify)).toBe(
+        role === Role.Owner || role === Role.Admin || role === Role.Reviewer,
+      );
+    }
+  });
+
   it('mọi vai trò đều xem được văn phòng AI', () => {
     for (const role of ALL_ROLES) {
       expect(hasPermission(role, Permission.OfficeRead)).toBe(true);
