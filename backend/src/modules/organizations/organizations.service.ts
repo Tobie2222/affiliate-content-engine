@@ -165,6 +165,7 @@ export class OrganizationsService {
       this.assertMayChange(actor.role, member.role, newRole);
       await this.assertNotLastOwner(manager, organizationId, member.role, newRole);
 
+      const previousRole = member.role; // ghi nhớ trước khi cập nhật, dùng cho nhật ký
       await manager
         .getRepository(OrganizationMember)
         .update({ id: member.id }, { role: newRole });
@@ -175,7 +176,7 @@ export class OrganizationsService {
           action: 'member.role_changed',
           entityType: 'organization_member',
           entityId: member.id,
-          metadata: { userId: member.userId, from: member.role, to: newRole },
+          metadata: { userId: member.userId, from: previousRole, to: newRole },
         },
         manager,
       );

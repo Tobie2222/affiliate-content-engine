@@ -16,9 +16,13 @@ function setup(initial: Row[]) {
   const rows: Row[] = initial.map((r) => ({ ...r }));
 
   const memberRepo = {
-    findOne: jest.fn(async ({ where }: { where: { id: string; organizationId: string } }) =>
-      rows.find((r) => r.id === where.id && r.organizationId === where.organizationId) ?? null,
-    ),
+    // Trả về BẢN SAO như database thật: đọc xong thì đối tượng không tự đổi theo các lần update sau.
+    findOne: jest.fn(async ({ where }: { where: { id: string; organizationId: string } }) => {
+      const row = rows.find(
+        (r) => r.id === where.id && r.organizationId === where.organizationId,
+      );
+      return row ? { ...row } : null;
+    }),
     count: jest.fn(
       async ({ where }: { where: { organizationId: string; role: Role } }) =>
         rows.filter((r) => r.organizationId === where.organizationId && r.role === where.role)
