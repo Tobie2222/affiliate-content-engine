@@ -9,6 +9,9 @@ Xem thiết kế ở [`docs/PHASE0.md`](docs/PHASE0.md).
 - **Phase 1**: khung dự án và khung văn phòng AI. Đã chạy được trên máy bạn.
 - **Phase 2**: đăng ký/đăng nhập (JWT + refresh token xoay vòng), tổ chức, thành viên, phân quyền theo vai trò, cô lập tenant. **Mới chạy kiểm tra thật cho phần logic thuần; lớp NestJS/DB chưa được biên dịch hay chạy** (xem "Chưa xác minh").
 
+- **Phase 3a**: sản phẩm, nhập CSV, link affiliate, Shopee giả lập (xem bên dưới).
+- **Phase 3b**: hồ sơ media và giấy phép (xem bên dưới). Giao diện web: đăng nhập, Văn phòng AI 3D.
+
 ## Cấu hình bắt buộc cho Phase 2
 
 Thêm vào `.env` (xem `.env.example`): `JWT_ACCESS_SECRET` (>= 32 ký tự ngẫu nhiên), `JWT_ACCESS_TTL_SECONDS`,
@@ -60,6 +63,37 @@ Giá dùng dấu chấm thập phân, không dùng dấu phân cách hàng nghì
 Quyết định thiết kế: `products` có `organization_id` (khác phác thảo đầu) để tổ chức này không ghi đè dữ liệu của tổ chức khác.
 Danh sách tên miền link affiliate được phép nằm trong `affiliate-link-url.ts` và là giả định chưa xác minh với tài liệu Shopee.
 
+## Phase 3b: media và giấy phép
+
+Thêm migration 005 (`media_assets`, `media_licenses`). Chạy `npm run migration:run`.
+**Giai đoạn này chỉ lưu hồ sơ và URL nguồn (https công khai) của media, chưa lưu file** vì chưa chọn nơi lưu trữ.
+
+Luồng: thêm media -> khai báo giấy phép (chờ duyệt) -> người có quyền `media.review` xác nhận -> media dùng được.
+AI/agent không có đường nào để xác nhận giấy phép.
+
+| Phương thức | Đường dẫn (sau `/organizations/:orgId/media`) | Quyền |
+|---|---|---|
+| POST | `/assets` thêm media `{ mediaType, title, sourceUrl, mimeType? }` | media.write |
+| GET | `/assets?licenseStatus=&mediaType=&search=&includeArchived=&limit=&offset=` | media.read |
+| GET | `/assets/:assetId` chi tiết + giấy phép + đánh giá trực tiếp | media.read |
+| GET | `/assets/:assetId/usability` dùng được ngay lúc này không, kèm dòng ghi nguồn bắt buộc | media.read |
+| POST | `/assets/:assetId/licenses` khai báo giấy phép (PENDING) | media.write |
+| POST | `/licenses/:licenseId/review` `{ decision: APPROVE\|REJECT, note? }` | media.review |
+| POST | `/assets/:assetId/archive` | media.write |
+| POST | `/assets/recheck` kiểm tra lại hạn của mọi media đang dùng | media.review |
+
+Loại giấy phép: `OWNED` (cần mô tả cách tạo ra), `CC0` (cần link nguồn), `CC_BY` (cần link, tên tác giả, dòng ghi nguồn),
+`COMMERCIAL_PURCHASED` / `PARTNER_GRANTED` (cần bên cấp và link hoặc ghi chú bằng chứng). Bắt buộc khai báo `commercialUseAllowed`;
+giấy phép không cho dùng thương mại được ghi nhận nhưng media vẫn không dùng được (nội dung affiliate là thương mại).
+
+Trạng thái media: `UNLICENSED`, `NEEDS_REVIEW`, `VALID`, `EXPIRING_SOON` (còn dưới 14 ngày, vẫn dùng được), `EXPIRED`, `RESTRICTED`, `REJECTED`.
+Ngày không kèm giờ hiểu theo giờ Việt Nam (UTC+7); hết hạn tính từ cuối ngày hết hạn.
+Trạng thái trong danh sách là bản lưu tạm để lọc; `MediaService.assertUsable()` luôn tính lại tại thời điểm dùng
+(Phase 4-5 sẽ gọi nó trước khi gắn media vào bài và ngay trước khi đăng). `recheck` hiện gọi bằng tay, sau này chạy theo lịch.
+
+Quyết định thiết kế (cần bạn xác nhận): tách quyền KHÔNG áp dụng cho duyệt giấy phép, giống xác minh link; người dùng một mình
+(OWNER) vẫn duyệt được giấy phép do chính mình khai báo. Nhật ký ghi cả người tạo và người duyệt.
+
 ## Chạy thử (máy của bạn)
 
 Yêu cầu: Node 22, Docker.
@@ -110,5 +144,5 @@ băm mật khẩu, token, vai trò/quyền, slug, chính sách refresh token (qu
 
 ## Chưa làm (Phase sau)
 
-Media và giấy phép (Phase 3b), tích hợp Shopee chính thức, AI + duyệt (Phase 4), đăng Threads (Phase 5),
+Lưu file media thật (chọn nơi lưu trữ), màn hình giao diện cho sản phẩm/media, tích hợp Shopee chính thức, AI + duyệt (Phase 4), đăng Threads (Phase 5),
 analytics + n8n (Phase 6), ESLint, integration test, Dockerfile cho ứng dụng.

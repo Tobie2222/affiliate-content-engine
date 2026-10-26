@@ -72,6 +72,18 @@ describe('quyền theo vai trò', () => {
     }
   });
 
+  it('media: mọi vai trò xem được; OWNER, ADMIN, CONTENT_EDITOR thêm/sửa; OWNER, ADMIN, REVIEWER duyệt giấy phép', () => {
+    for (const role of ALL_ROLES) {
+      expect(hasPermission(role, Permission.MediaRead)).toBe(true);
+      expect(hasPermission(role, Permission.MediaWrite)).toBe(
+        role === Role.Owner || role === Role.Admin || role === Role.ContentEditor,
+      );
+      expect(hasPermission(role, Permission.MediaReview)).toBe(
+        role === Role.Owner || role === Role.Admin || role === Role.Reviewer,
+      );
+    }
+  });
+
   it('mọi vai trò đều xem được văn phòng AI', () => {
     for (const role of ALL_ROLES) {
       expect(hasPermission(role, Permission.OfficeRead)).toBe(true);

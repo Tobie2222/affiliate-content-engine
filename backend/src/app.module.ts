@@ -9,6 +9,7 @@ import { HealthModule } from './health/health.module';
 import { AffiliateModule } from './modules/affiliate/affiliate.module';
 import { AgentsModule } from './modules/agents/agents.module';
 import { AuthModule } from './modules/auth/auth.module';
+import { MediaModule } from './modules/media/media.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 
 @Module({
@@ -51,6 +52,7 @@ import { OrganizationsModule } from './modules/organizations/organizations.modul
     OrganizationsModule,
     AffiliateModule,
     AgentsModule,
+    MediaModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

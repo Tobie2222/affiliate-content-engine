@@ -19,6 +19,10 @@ export enum Permission {
   CatalogWrite = 'catalog.write',
   /** Xác minh link affiliate do người dùng tự nhập (bước kiểm tra của con người). */
   LinksVerify = 'links.verify',
+  MediaRead = 'media.read',
+  MediaWrite = 'media.write',
+  /** Xác nhận hoặc từ chối giấy phép media (bước kiểm tra của con người). */
+  MediaReview = 'media.review',
 }
 
 const P = Permission;
@@ -29,10 +33,17 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlyArray<Permission>>>
     P.MembersManage, P.OfficeRead, P.OfficeControl,
     P.ContentRead, P.ContentWrite, P.ContentReview, P.AnalyticsRead,
     P.CatalogRead, P.CatalogWrite, P.LinksVerify,
+    P.MediaRead, P.MediaWrite, P.MediaReview,
   ],
-  [Role.ContentEditor]: [P.OfficeRead, P.ContentRead, P.ContentWrite, P.CatalogRead, P.CatalogWrite],
-  [Role.Reviewer]: [P.OfficeRead, P.ContentRead, P.ContentReview, P.CatalogRead, P.LinksVerify],
-  [Role.Analyst]: [P.OfficeRead, P.ContentRead, P.AnalyticsRead, P.CatalogRead],
+  [Role.ContentEditor]: [
+    P.OfficeRead, P.ContentRead, P.ContentWrite, P.CatalogRead, P.CatalogWrite,
+    P.MediaRead, P.MediaWrite,
+  ],
+  [Role.Reviewer]: [
+    P.OfficeRead, P.ContentRead, P.ContentReview, P.CatalogRead, P.LinksVerify,
+    P.MediaRead, P.MediaReview,
+  ],
+  [Role.Analyst]: [P.OfficeRead, P.ContentRead, P.AnalyticsRead, P.CatalogRead, P.MediaRead],
 };
 
 export function hasPermission(role: Role, permission: Permission): boolean {
