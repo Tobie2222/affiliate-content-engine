@@ -177,6 +177,8 @@ describe('AgentOfficeService', () => {
     const view = await service.setStatus(ORG_A, 'writer', AgentStatus.Paused);
     expect(writer.status).toBe(AgentStatus.Paused);
     expect(view.type).toBe(AgentEventType.StatusChanged);
+    // Giao diện dựa vào payload này để cập nhật trạng thái ngay, không cần tải lại danh sách.
+    expect(view.payload).toEqual({ status: AgentStatus.Paused });
   });
 
   it('cắt message dài quá 500 ký tự', async () => {

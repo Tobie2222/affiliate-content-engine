@@ -80,12 +80,33 @@ npm run start:dev
 - Liveness: `GET /api/v1/health` · Readiness (DB + Redis): `GET /api/v1/health/ready`
 - `npm run seed:dev` không còn cần thiết từ Phase 2: đăng ký tài khoản rồi gọi `POST /organizations`, 8 agent được tạo tự động.
 
+## Giao diện web (`frontend/`)
+
+React 18 + Vite + TypeScript. Hiện có: đăng nhập/đăng ký, chọn hoặc tạo tổ chức, **Văn phòng AI** (bản đồ 2D,
+bong bóng thoại, mũi tên bàn giao, tạm dừng từng bộ phận, chạy mô phỏng) và trang Sản phẩm (tạm thời chỉ trỏ tới Swagger).
+
+```bash
+# terminal 1: backend đang chạy (npm run start:dev trong backend/)
+cd frontend
+npm install
+npm run dev                     # http://localhost:5173
+npm test                        # test logic thuần (SSE parser, reducer văn phòng)
+npm run typecheck
+```
+
+- Vite chuyển tiếp `/api` sang backend `http://localhost:3001` (khớp `PORT=3001` trong `.env` của bạn).
+  Backend ở cổng khác thì đặt `VITE_API_TARGET`, ví dụ PowerShell: `$env:VITE_API_TARGET="http://localhost:3000"; npm run dev`.
+- Luồng thời gian thực dùng `fetch` (không phải `EventSource`) vì cần gửi header Authorization.
+- Refresh token lưu trong `localStorage`, access token chỉ giữ trong bộ nhớ.
+- "Chạy mô phỏng" gọi `POST .../office/dev/emit`, chỉ hoạt động khi `NODE_ENV` khác `production`; các tin đều gắn nhãn `[Mô phỏng]`.
+
 ## Chưa xác minh
 
 Môi trường dựng mã không cài được package npm (proxy chặn registry). Đã chạy thật: state machine nội dung,
 băm mật khẩu, token, vai trò/quyền, slug, chính sách refresh token (qua bộ chạy tối giản, không phải jest).
 **Chưa chạy**: `npm run typecheck`/`build`, jest cho phần NestJS, migration 002-003 trên PostgreSQL, và toàn bộ luồng
-đăng nhập/tổ chức qua HTTP. Hãy chạy `npm install && npm run typecheck && npm test` và báo lại lỗi nếu có.
+đăng nhập/tổ chức qua HTTP, và `npm install`/`npm run dev`/`npm run typecheck` của `frontend/`
+(đã kiểm tra: logic thuần qua bộ chạy tối giản, cú pháp TSX, kết xuất bản đồ bằng Chromium). Hãy chạy `npm install && npm run typecheck && npm test` và báo lại lỗi nếu có.
 
 ## Chưa làm (Phase sau)
 

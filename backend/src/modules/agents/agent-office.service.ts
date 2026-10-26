@@ -114,6 +114,8 @@ export class AgentOfficeService {
       null,
       AgentEventType.StatusChanged,
       `Trạng thái chuyển sang ${status}`,
+      undefined,
+      { status },
     );
   }
 
