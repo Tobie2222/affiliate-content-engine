@@ -159,10 +159,10 @@ export function OfficeMap3D({ state, initialYaw = DEFAULT_YAW }: { state: Office
                 <Backdrop nodes={nodes} hub={state.agents['director']} />
                 <Arrows state={state} />
               </div>
-              <div className="side side-front" />
-              <div className="side side-back" />
-              <div className="side side-left" />
-              <div className="side side-right" />
+              <div className="edge edge-front" />
+              <div className="edge edge-back" />
+              <div className="edge edge-left" />
+              <div className="edge edge-right" />
             </div>
             {nodes.map((n) => (
               <BuildingBody key={n.key} node={n} yaw={yaw} />

@@ -248,11 +248,11 @@ input:focus-visible, select:focus-visible { border-color: var(--accent); }
 .world-labels { pointer-events: none; }
 .ground { position: absolute; inset: 0; transform-style: preserve-3d; }
 .ground-top { position: absolute; inset: 0; overflow: hidden; }
-.side { position: absolute; background: linear-gradient(#9b7b55, #7a5d3f); backface-visibility: hidden; }
-.side-front { left: 0; top: 100%; width: 100%; height: calc(var(--u) * 3); transform-origin: 50% 0; transform: rotateX(-90deg); }
-.side-back { left: 0; top: calc(var(--u) * -3); width: 100%; height: calc(var(--u) * 3); transform-origin: 50% 100%; transform: rotateX(90deg); filter: brightness(0.85); }
-.side-left { left: calc(var(--u) * -3); top: 0; width: calc(var(--u) * 3); height: 100%; transform-origin: 100% 50%; transform: rotateY(-90deg); filter: brightness(0.9); }
-.side-right { left: 100%; top: 0; width: calc(var(--u) * 3); height: 100%; transform-origin: 0 50%; transform: rotateY(90deg); filter: brightness(0.78); }
+.edge { position: absolute; background: linear-gradient(#9b7b55, #7a5d3f); backface-visibility: hidden; }
+.edge-front { left: 0; top: 100%; width: 100%; height: calc(var(--u) * 3); transform-origin: 50% 0; transform: rotateX(-90deg); }
+.edge-back { left: 0; top: calc(var(--u) * -3); width: 100%; height: calc(var(--u) * 3); transform-origin: 50% 100%; transform: rotateX(90deg); filter: brightness(0.85); }
+.edge-left { left: calc(var(--u) * -3); top: 0; width: calc(var(--u) * 3); height: 100%; transform-origin: 100% 50%; transform: rotateY(-90deg); filter: brightness(0.9); }
+.edge-right { left: 100%; top: 0; width: calc(var(--u) * 3); height: 100%; transform-origin: 0 50%; transform: rotateY(90deg); filter: brightness(0.78); }
 
 .b3 { position: absolute; width: 0; height: 0; transform-style: preserve-3d; }
 .b3-shadow {
