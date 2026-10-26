@@ -214,3 +214,105 @@ input:focus-visible, select:focus-visible { border-color: var(--accent); }
 @media (prefers-reduced-motion: reduce) {
   .handoff-line, .agent[data-status='WORKING'] .person-ring { animation: none; }
 }
+
+/* --- Bản đồ 3D (CSS 3D, không thêm thư viện) --- */
+.map-wrap { min-width: 0; display: grid; gap: 8px; }
+.map-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.map3d {
+  position: relative;
+  width: 100%;
+  min-width: 640px;
+  aspect-ratio: 16 / 10;
+  overflow: hidden;
+  border-radius: 16px;
+  border: 1px solid #b7cfd8;
+  background: linear-gradient(#d7ebf2 0%, #e9f2ee 62%, #dfeadf 100%);
+  perspective: 2400px;
+  perspective-origin: 50% 30%;
+  cursor: grab;
+  user-select: none;
+}
+.map3d[data-dragging='true'] { cursor: grabbing; }
+.world {
+  position: absolute;
+  left: 50%;
+  top: 56%;
+  width: calc(var(--u) * 160);
+  height: calc(var(--u) * 100);
+  margin-left: calc(var(--u) * -80);
+  margin-top: calc(var(--u) * -50);
+  transform-style: preserve-3d;
+  transform: scale(var(--fit)) rotateX(var(--tilt)) rotateZ(var(--yaw));
+}
+.map3d:not([data-dragging='true']) .world { transition: transform 0.45s ease; }
+.world-labels { pointer-events: none; }
+.ground { position: absolute; inset: 0; transform-style: preserve-3d; }
+.ground-top { position: absolute; inset: 0; overflow: hidden; }
+.side { position: absolute; background: linear-gradient(#9b7b55, #7a5d3f); backface-visibility: hidden; }
+.side-front { left: 0; top: 100%; width: 100%; height: calc(var(--u) * 3); transform-origin: 50% 0; transform: rotateX(-90deg); }
+.side-back { left: 0; top: calc(var(--u) * -3); width: 100%; height: calc(var(--u) * 3); transform-origin: 50% 100%; transform: rotateX(90deg); filter: brightness(0.85); }
+.side-left { left: calc(var(--u) * -3); top: 0; width: calc(var(--u) * 3); height: 100%; transform-origin: 100% 50%; transform: rotateY(-90deg); filter: brightness(0.9); }
+.side-right { left: 100%; top: 0; width: calc(var(--u) * 3); height: 100%; transform-origin: 0 50%; transform: rotateY(90deg); filter: brightness(0.78); }
+
+.b3 { position: absolute; width: 0; height: 0; transform-style: preserve-3d; }
+.b3-shadow {
+  position: absolute;
+  left: calc(var(--u) * -6.5);
+  top: calc(var(--u) * -5);
+  width: calc(var(--u) * 13);
+  height: calc(var(--u) * 11);
+  border-radius: 50%;
+  background: rgba(29, 43, 58, 0.2);
+  transform: translateZ(1px);
+}
+.box { position: absolute; left: 0; top: 0; width: 0; height: 0; transform-style: preserve-3d; }
+.face { position: absolute; backface-visibility: hidden; filter: brightness(var(--br, 1)) grayscale(var(--gs, 0)); }
+.wall {
+  left: calc(var(--u) * -4.5);
+  top: calc(var(--u) * -5.5);
+  width: calc(var(--u) * 9);
+  height: calc(var(--u) * 5.5);
+  background: #fff;
+  box-shadow: inset 0 0 0 1.5px rgba(29, 43, 58, 0.6);
+  transform-origin: 50% 100%;
+  transform: rotateZ(calc(var(--k) * 90deg)) translateY(calc(var(--u) * 4.5)) rotateX(-90deg);
+}
+.roof {
+  left: calc(var(--u) * -4.5);
+  top: calc(var(--u) * -6.02);
+  width: calc(var(--u) * 9);
+  height: calc(var(--u) * 6.02);
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  transform-origin: 50% 100%;
+  transform: rotateZ(calc(var(--k) * 90deg)) translateY(calc(var(--u) * 4.5)) translateZ(calc(var(--u) * 5.5)) rotateX(-41.6deg);
+}
+.win { position: absolute; top: 28%; width: 22%; height: 30%; background: #cfe6f0; box-shadow: inset 0 0 0 1px rgba(29, 43, 58, 0.6); }
+.win.a { left: 12%; }
+.win.b { right: 12%; }
+.door { position: absolute; left: 38%; bottom: 0; width: 24%; height: 58%; box-shadow: inset 0 0 0 1px rgba(29, 43, 58, 0.6); }
+.b3[data-status='PAUSED'] .face { --gs: 0.8; }
+
+/* Nhãn luôn quay về phía người xem: xoay ngược lại phép xoay của thế giới. */
+.bb { position: absolute; left: 0; top: 0; transform: rotateZ(calc(var(--yaw) * -1)) rotateX(calc(var(--tilt) * -1)); }
+/* Nhãn dựng thẳng đứng nên chỉ được vươn lên phía trên điểm neo; vươn xuống sẽ chui dưới mặt đất và bị che. */
+.b3-top { transform-origin: 0 0; transform: translateZ(calc(var(--u) * 12.5)) rotateZ(calc(var(--yaw) * -1)) rotateX(calc(var(--tilt) * -1)); }
+.stack { transform: translate(-50%, -100%); width: max-content; display: grid; justify-items: center; gap: 4px; }
+.stack .bubble { position: static; transform: none; left: auto; bottom: auto; font-size: max(12px, calc(var(--u) * 2.1)); max-width: calc(var(--u) * 36); }
+.plate-in { display: grid; justify-items: center; line-height: 1.15; text-align: center; }
+.ring3 { width: max(24px, calc(var(--u) * 4.4)); aspect-ratio: 1; border-radius: 50%; border: 3px solid var(--st-idle); background: #fff; display: block; margin-bottom: 2px; }
+.b3[data-status='WORKING'] .ring3 { border-color: var(--st-working); animation: pulse 1.6s ease-in-out infinite; }
+.b3[data-status='WAITING_APPROVAL'] .ring3 { border-color: var(--st-waiting); border-style: dashed; }
+.b3[data-status='ERROR'] .ring3 { border-color: var(--st-error); }
+.b3[data-status='PAUSED'] .ring3 { border-color: var(--st-paused); border-style: double; }
+.plate-in .agent-name { margin-top: 0; font-size: max(12px, calc(var(--u) * 2.3)); }
+.plate-in .agent-status { font-size: max(11px, calc(var(--u) * 1.9)); }
+
+.view-switch { display: inline-flex; border: 1px solid var(--line); border-radius: 999px; overflow: hidden; background: var(--panel); }
+.view-switch button { font: inherit; border: 0; background: transparent; padding: 6px 14px; cursor: pointer; color: var(--ink-soft); }
+.view-switch button[aria-pressed='true'] { background: var(--accent); color: var(--accent-ink); }
+.head-tools { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .map3d:not([data-dragging='true']) .world { transition: none; }
+  .b3[data-status='WORKING'] .ring3 { animation: none; }
+}

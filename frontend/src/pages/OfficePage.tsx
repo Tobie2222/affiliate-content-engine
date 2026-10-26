@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { ApiError, api } from '../api/client';
 import { OfficeMap } from '../office/OfficeMap';
+import { OfficeMap3D } from '../office/OfficeMap3D';
 import { EVENT_LABEL, STATUS_LABEL } from '../office/labels';
 import type { ApiAgentEvent, OfficeState } from '../office/officeState';
 import { useOfficeStream, type Connection } from '../office/useOfficeStream';
@@ -31,6 +32,17 @@ const SIMULATION: SimStep[] = [
 
 const STEP_DELAY_MS = 2000;
 
+type MapView = '2d' | '3d';
+const VIEW_KEY = 'ace.mapView';
+
+function readView(): MapView {
+  try {
+    return localStorage.getItem(VIEW_KEY) === '2d' ? '2d' : '3d';
+  } catch {
+    return '3d';
+  }
+}
+
 function delay(ms: number, signal: AbortSignal): Promise<void> {
   return new Promise((resolve) => {
     const t = setTimeout(resolve, ms);
@@ -54,6 +66,16 @@ function OfficeView({ org }: { org: OrgItem }) {
   const [actionError, setActionError] = useState<string | null>(null);
   const [simulating, setSimulating] = useState(false);
   const simAbort = useRef<AbortController | null>(null);
+  const [view, setView] = useState<MapView>(readView);
+
+  const changeView = useCallback((next: MapView) => {
+    setView(next);
+    try {
+      localStorage.setItem(VIEW_KEY, next);
+    } catch {
+      // bỏ qua
+    }
+  }, []);
 
   useEffect(() => () => simAbort.current?.abort(), []);
 
@@ -133,16 +155,22 @@ function OfficeView({ org }: { org: OrgItem }) {
           <h1>Văn phòng AI</h1>
           <p className="muted">Các bộ phận phối hợp để chuẩn bị nội dung. Mọi bài đều chờ bạn duyệt trước khi đăng.</p>
         </div>
-        <span className="conn" data-state={connection}>
-          <span className="dot" aria-hidden="true" />
-          {CONNECTION_LABEL[connection]}
-        </span>
+        <div className="head-tools">
+          <div className="view-switch" role="group" aria-label="Kiểu hiển thị bản đồ">
+            <button type="button" aria-pressed={view === '2d'} onClick={() => changeView('2d')}>2D</button>
+            <button type="button" aria-pressed={view === '3d'} onClick={() => changeView('3d')}>3D</button>
+          </div>
+          <span className="conn" data-state={connection}>
+            <span className="dot" aria-hidden="true" />
+            {CONNECTION_LABEL[connection]}
+          </span>
+        </div>
       </header>
 
       {error && connection !== 'live' && <p className="notice notice-error" role="alert">{error}</p>}
 
       <div className="office-grid">
-        <OfficeMap state={state} />
+        {view === '3d' ? <OfficeMap3D state={state} /> : <OfficeMap state={state} />}
 
         <aside className="side">
           <section className="card" aria-labelledby="agents-h">

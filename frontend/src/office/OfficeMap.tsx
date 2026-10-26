@@ -5,8 +5,8 @@ import type { AgentNode, OfficeState } from './officeState';
 // Bản đồ vẽ trên hệ tọa độ 160x100 (tỉ lệ 16:10), khớp với khung hiển thị.
 const W = 160;
 const H = 100;
-const px = (node: AgentNode) => (node.mapX / 100) * W;
-const py = (node: AgentNode) => (node.mapY / 100) * H;
+export const px = (node: AgentNode) => (node.mapX / 100) * W;
+export const py = (node: AgentNode) => (node.mapY / 100) * H;
 
 const TREES: ReadonlyArray<[number, number]> = [
   [8, 14],
@@ -18,7 +18,7 @@ const TREES: ReadonlyArray<[number, number]> = [
   [6, 62],
 ];
 
-function Backdrop({ nodes, hub }: { nodes: AgentNode[]; hub: AgentNode | undefined }) {
+export function Backdrop({ nodes, hub }: { nodes: AgentNode[]; hub: AgentNode | undefined }) {
   const cx = hub ? px(hub) : W / 2;
   const cy = hub ? py(hub) : H / 2;
   return (
@@ -51,7 +51,7 @@ function Backdrop({ nodes, hub }: { nodes: AgentNode[]; hub: AgentNode | undefin
   );
 }
 
-function Arrows({ state }: { state: OfficeState }) {
+export function Arrows({ state }: { state: OfficeState }) {
   return (
     <svg className="map-svg map-arrows" viewBox={`0 0 ${W} ${H}`} aria-hidden="true">
       {state.handoffs.map((h) => {
@@ -93,7 +93,7 @@ function Building({ roof }: { roof: string }) {
   );
 }
 
-function Person({ roof }: { roof: string }) {
+export function Person({ roof }: { roof: string }) {
   return (
     <svg className="person" viewBox="0 0 24 24" aria-hidden="true">
       <circle cx="12" cy="12" r="11" fill="#fff" />

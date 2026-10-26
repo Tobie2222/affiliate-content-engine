@@ -82,7 +82,7 @@ npm run start:dev
 
 ## Giao diện web (`frontend/`)
 
-React 18 + Vite + TypeScript. Hiện có: đăng nhập/đăng ký, chọn hoặc tạo tổ chức, **Văn phòng AI** (bản đồ 2D,
+React 18 + Vite + TypeScript. Hiện có: đăng nhập/đăng ký, chọn hoặc tạo tổ chức, **Văn phòng AI** (bản đồ 3D xoay được bằng CSS 3D, có thể chuyển về 2D;
 bong bóng thoại, mũi tên bàn giao, tạm dừng từng bộ phận, chạy mô phỏng) và trang Sản phẩm (tạm thời chỉ trỏ tới Swagger).
 
 ```bash
