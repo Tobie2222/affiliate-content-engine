@@ -147,10 +147,10 @@ function setup(options: { llm?: LlmProvider; sod?: boolean } = {}) {
 
   const service = new ContentService(
     dataSource as unknown as DataSource,
-    posts as unknown as Repository<never>,
-    versions as unknown as Repository<never>,
-    approvals as unknown as Repository<never>,
-    orgs as unknown as Repository<never>,
+    posts as unknown as Repository<ContentPost>,
+    versions as unknown as Repository<ContentPostVersion>,
+    approvals as unknown as Repository<PostApproval>,
+    orgs as unknown as Repository<Organization>,
     options.llm ?? new MockLlmProvider(),
     products as unknown as ProductsService,
     links as unknown as AffiliateLinksService,
