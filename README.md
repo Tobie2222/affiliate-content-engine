@@ -11,6 +11,7 @@ Xem thiết kế ở [`docs/PHASE0.md`](docs/PHASE0.md).
 
 - **Phase 3a**: sản phẩm, nhập CSV, link affiliate, Shopee giả lập (xem bên dưới).
 - **Phase 3b**: hồ sơ media và giấy phép (xem bên dưới). Giao diện web: đăng nhập, Văn phòng AI 3D.
+- **Phase 4a** (backend): soạn bài, AI đề xuất bản nháp, QA tự động, gửi duyệt và duyệt bởi người (xem bên dưới). Chưa có màn hình web (Phase 4b).
 
 ## Cấu hình bắt buộc cho Phase 2
 
@@ -94,6 +95,29 @@ Trạng thái trong danh sách là bản lưu tạm để lọc; `MediaService.a
 Quyết định thiết kế (cần bạn xác nhận): tách quyền KHÔNG áp dụng cho duyệt giấy phép, giống xác minh link; người dùng một mình
 (OWNER) vẫn duyệt được giấy phép do chính mình khai báo. Nhật ký ghi cả người tạo và người duyệt.
 
+## Phase 4a: nội dung, QA và duyệt bởi người
+
+Migration `1760000500000-ContentPosts` (bảng `content_posts`, `content_post_versions`, `post_approvals`). Đường dẫn: `/api/v1/organizations/:orgId/content/posts`.
+
+| Việc | Endpoint | Quyền |
+| --- | --- | --- |
+| Danh sách / chi tiết (kèm các phiên bản và lịch sử duyệt) | `GET /`, `GET /:postId` | `content.read` |
+| Soạn tay | `POST /` | `content.write` |
+| AI đề xuất 1-3 bản nháp | `POST /generate` | `content.write` |
+| Sửa (cần `expectedVersion`) | `PATCH /:postId` | `content.write` |
+| Chạy lại QA | `POST /:postId/qa` | `content.read` |
+| Gửi duyệt / rút lại | `POST /:postId/submit`, `/withdraw` | `content.write` |
+| Duyệt / yêu cầu sửa / từ chối | `POST /:postId/review` | `content.review` |
+| Xem / đổi cài đặt tổ chức (`separationOfDuties`) | `GET`, `PATCH /organizations/:orgId/settings` | thành viên / `org.manage` |
+
+Nguyên tắc:
+- **AI chỉ đề xuất.** Bản nháp luôn ở `DRAFT`, chưa có "người soạn"; không có đường nào để AI duyệt hay đăng. Agent "Viết bài" đang tạm dừng thì `generate` bị từ chối (409) và không gọi LLM.
+- **QA tự động** (`content-rules.ts`, logic thuần): độ dài Threads (500 ký tự), có dòng công khai hoa hồng, đúng một link affiliate do hệ thống thêm, câu cam kết/y tế bị cấm, giá nêu trong bài khớp giá đã xác minh (giá không rõ ≠ 0), trùng lặp bài gần đây, nhãn `[MẪU]` còn sót, trạng thái link, giấy phép media. Có mục FAIL thì không gửi duyệt được; mục WARN chỉ để người duyệt cân nhắc.
+- **Mỗi lần sửa** tăng `content_version`, xóa kết quả QA cũ và đưa bài về `DRAFT` (mất hiệu lực duyệt). Người duyệt phải gửi đúng phiên bản đã xem.
+- **Duyệt chạy lại QA ngay lúc duyệt** (link/giấy phép/giá có thể đã đổi từ lúc gửi).
+- **Tách quyền** (mặc định bật): người sửa/soạn cuối cùng không tự duyệt bài của mình (403). Bản nháp AI chưa ai sửa thì ai có quyền duyệt cũng duyệt được. Tắt bằng `PATCH .../settings {"separationOfDuties": false}` (ghi nhật ký kiểm toán).
+- `LLM_PROVIDER=mock` (mặc định): bản nháp mẫu bắt đầu bằng `[MẪU]`, QA chặn cho tới khi bạn viết lại. Giá trị khác trả 503 cho tới khi có nhà cung cấp thật.
+
 ## Chạy thử (máy của bạn)
 
 Yêu cầu: Node 22, Docker.
@@ -138,11 +162,11 @@ npm run typecheck
 
 Môi trường dựng mã không cài được package npm (proxy chặn registry). Đã chạy thật: state machine nội dung,
 băm mật khẩu, token, vai trò/quyền, slug, chính sách refresh token (qua bộ chạy tối giản, không phải jest).
-**Chưa chạy**: `npm run typecheck`/`build`, jest cho phần NestJS, migration 002-003 trên PostgreSQL, và toàn bộ luồng
+**Chưa chạy**: `npm run typecheck`/`build`, jest cho phần NestJS (kể cả `content.service.spec.ts`, mới chỉ chạy qua bộ chạy tối giản với kho dữ liệu giả), migration 002-004 trên PostgreSQL (004 = ContentPosts), và toàn bộ luồng
 đăng nhập/tổ chức qua HTTP, và `npm install`/`npm run dev`/`npm run typecheck` của `frontend/`
 (đã kiểm tra: logic thuần qua bộ chạy tối giản, cú pháp TSX, kết xuất bản đồ bằng Chromium). Hãy chạy `npm install && npm run typecheck && npm test` và báo lại lỗi nếu có.
 
 ## Chưa làm (Phase sau)
 
-Lưu file media thật (chọn nơi lưu trữ), màn hình giao diện cho sản phẩm/media, tích hợp Shopee chính thức, AI + duyệt (Phase 4), đăng Threads (Phase 5),
+Lưu file media thật (chọn nơi lưu trữ), màn hình giao diện cho sản phẩm/media, tích hợp Shopee chính thức, màn hình duyệt bài (Phase 4b), nhà cung cấp LLM thật, đăng Threads (Phase 5),
 analytics + n8n (Phase 6), ESLint, integration test, Dockerfile cho ứng dụng.

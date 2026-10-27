@@ -45,6 +45,11 @@ export class AffiliateLinksService {
     };
   }
 
+  /** Lấy một link của đúng tổ chức, kèm kết luận có đăng được hay không (dùng cho QA bài viết). */
+  async get(organizationId: string, linkId: string): Promise<LinkView> {
+    return this.toView(await this.requireLink(organizationId, linkId));
+  }
+
   async list(organizationId: string, productId: string): Promise<LinkView[]> {
     await this.products.requireProduct(organizationId, productId);
     const links = await this.links.find({

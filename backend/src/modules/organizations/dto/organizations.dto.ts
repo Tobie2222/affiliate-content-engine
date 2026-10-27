@@ -1,5 +1,5 @@
-import { ApiProperty } from '@nestjs/swagger';
-import { IsEmail, IsEnum, IsString, MaxLength, MinLength } from 'class-validator';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
+import { IsBoolean, IsEmail, IsEnum, IsOptional, IsString, MaxLength, MinLength } from 'class-validator';
 import { Role } from '../roles';
 
 export class CreateOrganizationDto {
@@ -25,4 +25,13 @@ export class UpdateMemberRoleDto {
   @ApiProperty({ enum: Role })
   @IsEnum(Role)
   role: Role;
+}
+
+export class UpdateOrgSettingsDto {
+  @ApiPropertyOptional({
+    description: 'Bật: người soạn bài không được tự duyệt bài của mình. Tắt: một người có thể vừa soạn vừa duyệt.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  separationOfDuties?: boolean;
 }

@@ -18,6 +18,7 @@ import {
   AddMemberDto,
   CreateOrganizationDto,
   UpdateMemberRoleDto,
+  UpdateOrgSettingsDto,
 } from './dto/organizations.dto';
 import { OrgAccessGuard } from './org-access.guard';
 import { OrganizationsService } from './organizations.service';
@@ -37,6 +38,23 @@ export class OrganizationsController {
   @Get()
   listMine(@CurrentUser() user: { id: string }) {
     return this.orgs.listMine(user.id);
+  }
+
+  @UseGuards(OrgAccessGuard)
+  @Get(':orgId/settings')
+  getSettings(@Param('orgId') orgId: string) {
+    return this.orgs.getSettings(orgId);
+  }
+
+  @UseGuards(OrgAccessGuard)
+  @RequirePermission(Permission.OrgManage)
+  @Patch(':orgId/settings')
+  updateSettings(
+    @Param('orgId') orgId: string,
+    @Req() req: AuthenticatedRequest,
+    @Body() dto: UpdateOrgSettingsDto,
+  ) {
+    return this.orgs.updateSettings(orgId, this.actor(req).id, dto);
   }
 
   /** Mọi thành viên đều xem được danh sách thành viên của tổ chức mình. */

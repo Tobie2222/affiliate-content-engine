@@ -40,6 +40,41 @@ export class OrganizationsService {
     private readonly audit: AuditLogsService,
   ) {}
 
+  async getSettings(organizationId: string): Promise<{ separationOfDuties: boolean }> {
+    const org = await this.dataSource.getRepository(Organization).findOne({ where: { id: organizationId } });
+    if (!org) {
+      throw new NotFoundException('Không tìm thấy tổ chức.');
+    }
+    return { separationOfDuties: org.separationOfDuties };
+  }
+
+  /** Đổi cài đặt tổ chức. Mọi thay đổi đều được ghi nhật ký kiểm toán (kèm giá trị cũ và mới). */
+  async updateSettings(
+    organizationId: string,
+    actorId: string,
+    patch: { separationOfDuties?: boolean },
+  ): Promise<{ separationOfDuties: boolean }> {
+    const repo = this.dataSource.getRepository(Organization);
+    const org = await repo.findOne({ where: { id: organizationId } });
+    if (!org) {
+      throw new NotFoundException('Không tìm thấy tổ chức.');
+    }
+    if (patch.separationOfDuties !== undefined && patch.separationOfDuties !== org.separationOfDuties) {
+      const before = org.separationOfDuties;
+      await repo.update({ id: organizationId }, { separationOfDuties: patch.separationOfDuties });
+      await this.audit.record({
+        organizationId,
+        actorId,
+        action: 'org.settings.updated',
+        entityType: 'organization',
+        entityId: organizationId,
+        metadata: { separationOfDuties: { from: before, to: patch.separationOfDuties } },
+      });
+      return { separationOfDuties: patch.separationOfDuties };
+    }
+    return { separationOfDuties: org.separationOfDuties };
+  }
+
   /** Tạo tổ chức: người tạo là OWNER, đồng thời dựng sẵn 8 agent của văn phòng AI. */
   async create(
     actorId: string,
