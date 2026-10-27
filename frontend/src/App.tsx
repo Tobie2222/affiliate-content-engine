@@ -2,8 +2,10 @@ import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext';
 import { OrgProvider } from './org/OrgContext';
 import { AppLayout } from './pages/AppLayout';
+import { ContentPage } from './pages/ContentPage';
 import { LoginPage } from './pages/LoginPage';
 import { OfficePage } from './pages/OfficePage';
+import { PostDetailPage } from './pages/PostDetailPage';
 import { ProductsPage } from './pages/ProductsPage';
 
 function Protected() {
@@ -28,6 +30,8 @@ export function App() {
       <Route element={<Protected />}>
         <Route path="/office" element={<OfficePage />} />
         <Route path="/products" element={<ProductsPage />} />
+        <Route path="/content" element={<ContentPage />} />
+        <Route path="/content/:postId" element={<PostDetailPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/office" replace />} />
     </Routes>

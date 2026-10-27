@@ -49,6 +49,7 @@ export function AppLayout() {
 
         <ul className="nav">
           <li><NavLink to="/office">Văn phòng AI</NavLink></li>
+          <li><NavLink to="/content">Bài viết</NavLink></li>
           <li><NavLink to="/products">Sản phẩm</NavLink></li>
         </ul>
 

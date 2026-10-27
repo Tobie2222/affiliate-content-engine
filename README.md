@@ -11,7 +11,8 @@ Xem thiết kế ở [`docs/PHASE0.md`](docs/PHASE0.md).
 
 - **Phase 3a**: sản phẩm, nhập CSV, link affiliate, Shopee giả lập (xem bên dưới).
 - **Phase 3b**: hồ sơ media và giấy phép (xem bên dưới). Giao diện web: đăng nhập, Văn phòng AI 3D.
-- **Phase 4a** (backend): soạn bài, AI đề xuất bản nháp, QA tự động, gửi duyệt và duyệt bởi người (xem bên dưới). Chưa có màn hình web (Phase 4b).
+- **Phase 4a** (backend): soạn bài, AI đề xuất bản nháp, QA tự động, gửi duyệt và duyệt bởi người (xem bên dưới).
+- **Phase 4b** (web): màn hình **Bài viết**: danh sách, tạo bài (AI đề xuất / tự soạn), báo cáo QA, sửa, gửi duyệt, duyệt, lịch sử.
 
 ## Cấu hình bắt buộc cho Phase 2
 
@@ -143,12 +144,17 @@ npm run start:dev
 React 18 + Vite + TypeScript. Hiện có: đăng nhập/đăng ký, chọn hoặc tạo tổ chức, **Văn phòng AI** (bản đồ 3D xoay được bằng CSS 3D, có thể chuyển về 2D;
 bong bóng thoại, mũi tên bàn giao, tạm dừng từng bộ phận, chạy mô phỏng) và trang Sản phẩm (tạm thời chỉ trỏ tới Swagger).
 
+**Bài viết** (`/content`, `/content/:postId`): lọc theo trạng thái; tạo bài bằng AI hoặc tự soạn (có đếm ký tự theo giới hạn 500 của Threads);
+xem báo cáo QA tách lỗi (chặn gửi duyệt) và cảnh báo (để người duyệt cân nhắc); sửa có kiểm tra xung đột phiên bản (không ghi đè thay đổi của người khác);
+gửi duyệt / rút lại; người có quyền duyệt chọn Duyệt / Yêu cầu sửa / Từ chối (lý do bắt buộc khi không duyệt). Khi tách quyền bật, người soạn cuối cùng
+không chọn được "Duyệt" (máy chủ cũng chặn). OWNER có công tắc tách quyền ở đầu trang. Nút hiện theo vai trò chỉ là gợi ý; máy chủ kiểm tra lại mọi yêu cầu.
+
 ```bash
 # terminal 1: backend đang chạy (npm run start:dev trong backend/)
 cd frontend
 npm install
 npm run dev                     # http://localhost:5173
-npm test                        # test logic thuần (SSE parser, reducer văn phòng)
+npm test                        # test logic thuần (SSE parser, reducer văn phòng, quyền/QA của màn hình bài viết)
 npm run typecheck
 ```
 
@@ -164,9 +170,9 @@ Môi trường dựng mã không cài được package npm (proxy chặn registr
 băm mật khẩu, token, vai trò/quyền, slug, chính sách refresh token (qua bộ chạy tối giản, không phải jest).
 **Chưa chạy**: `npm run typecheck`/`build`, jest cho phần NestJS (kể cả `content.service.spec.ts`, mới chỉ chạy qua bộ chạy tối giản với kho dữ liệu giả), migration 002-004 trên PostgreSQL (004 = ContentPosts), và toàn bộ luồng
 đăng nhập/tổ chức qua HTTP, và `npm install`/`npm run dev`/`npm run typecheck` của `frontend/`
-(đã kiểm tra: logic thuần qua bộ chạy tối giản, cú pháp TSX, kết xuất bản đồ bằng Chromium). Hãy chạy `npm install && npm run typecheck && npm test` và báo lại lỗi nếu có.
+(đã kiểm tra: logic thuần qua bộ chạy tối giản, cú pháp TSX, kết xuất bản đồ và các trang Bài viết bằng React + Chromium với dữ liệu giả; chưa thử luồng bấm nút thật với backend). Hãy chạy `npm install && npm run typecheck && npm test` và báo lại lỗi nếu có.
 
 ## Chưa làm (Phase sau)
 
-Lưu file media thật (chọn nơi lưu trữ), màn hình giao diện cho sản phẩm/media, tích hợp Shopee chính thức, màn hình duyệt bài (Phase 4b), nhà cung cấp LLM thật, đăng Threads (Phase 5),
+Lưu file media thật (chọn nơi lưu trữ), màn hình giao diện cho sản phẩm/media, tích hợp Shopee chính thức, nhà cung cấp LLM thật (Claude API), màn hình media và giấy phép, đăng Threads (Phase 5),
 analytics + n8n (Phase 6), ESLint, integration test, Dockerfile cho ứng dụng.
