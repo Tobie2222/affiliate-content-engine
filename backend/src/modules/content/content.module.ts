@@ -12,6 +12,8 @@ import { ContentService } from './content.service';
 import { ContentPostVersion } from './entities/content-post-version.entity';
 import { ContentPost } from './entities/content-post.entity';
 import { PostApproval } from './entities/post-approval.entity';
+import { DEFAULT_CLAUDE_MODEL } from '../../config/llm-config';
+import { ClaudeLlmProvider, loadClaudeClient } from './providers/claude-llm.provider';
 import { MockLlmProvider } from './providers/mock-llm.provider';
 import { LLM_PROVIDER, LlmProvider } from './providers/llm-provider.types';
 import { UnavailableLlmProvider } from './providers/unavailable-llm.provider';
@@ -28,13 +30,18 @@ import { UnavailableLlmProvider } from './providers/unavailable-llm.provider';
   controllers: [ContentController],
   providers: [
     {
-      // LLM_PROVIDER=mock (mặc định) dùng bản nháp mẫu gắn nhãn [MẪU]; giá trị khác báo "chưa cấu hình".
+      // LLM_PROVIDER=mock (mặc định): bản nháp mẫu gắn nhãn [MẪU]. LLM_PROVIDER=claude: gọi API của Claude,
+      // nạp SDK và kiểm tra khóa ngay lúc khởi động để lỗi cấu hình lộ ra sớm thay vì ở lần tạo nháp đầu tiên.
       provide: LLM_PROVIDER,
       inject: [ConfigService],
-      useFactory: (config: ConfigService): LlmProvider =>
-        (config.get<string>('LLM_PROVIDER') ?? 'mock') === 'mock'
-          ? new MockLlmProvider()
-          : new UnavailableLlmProvider(),
+      useFactory: async (config: ConfigService): Promise<LlmProvider> => {
+        const mode = config.get<string>('LLM_PROVIDER') ?? 'mock';
+        if (mode === 'claude') {
+          const client = await loadClaudeClient(config.get<string>('ANTHROPIC_API_KEY') ?? '');
+          return new ClaudeLlmProvider(client, config.get<string>('ANTHROPIC_MODEL') || DEFAULT_CLAUDE_MODEL);
+        }
+        return mode === 'mock' ? new MockLlmProvider() : new UnavailableLlmProvider();
+      },
     },
     ContentService,
   ],

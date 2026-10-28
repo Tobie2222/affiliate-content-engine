@@ -1,6 +1,8 @@
 import { plainToInstance } from 'class-transformer';
+import { LLM_PROVIDER_MODES, checkLlmConfig } from './llm-config';
 import {
   IsEnum,
+  IsIn,
   IsInt,
   IsOptional,
   IsString,
@@ -95,8 +97,19 @@ export class EnvironmentVariables {
   @IsString()
   CORS_ORIGINS?: string;
 
-  @IsEnum(ProviderMode)
-  LLM_PROVIDER: ProviderMode = ProviderMode.Mock;
+  /** mock | claude. Với claude cần ANTHROPIC_API_KEY (xem checkLlmConfig). */
+  @IsIn([...LLM_PROVIDER_MODES])
+  LLM_PROVIDER: string = 'mock';
+
+  /** Khóa API của Claude. Chỉ đặt trong .env của backend, không bao giờ đưa vào frontend hay commit. */
+  @IsOptional()
+  @IsString()
+  ANTHROPIC_API_KEY?: string;
+
+  /** Tên model Claude dùng để viết nháp. Bỏ trống = mặc định rẻ và nhanh. */
+  @IsOptional()
+  @IsString()
+  ANTHROPIC_MODEL?: string;
 
   @IsEnum(ProviderMode)
   SHOPEE_PROVIDER: ProviderMode = ProviderMode.Mock;
@@ -124,6 +137,11 @@ export function validateEnv(
       .map((e) => `${e.property}: ${Object.keys(e.constraints ?? {}).join(', ')}`)
       .join('; ');
     throw new Error(`Cấu hình môi trường không hợp lệ -> ${details}`);
+  }
+
+  const llmErrors = checkLlmConfig(validated);
+  if (llmErrors.length > 0) {
+    throw new Error(`Cấu hình môi trường không hợp lệ -> ${llmErrors.join('; ')}`);
   }
 
   if (validated.NODE_ENV === NodeEnv.Production) {

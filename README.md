@@ -118,7 +118,7 @@ Nguyên tắc:
 - **Mỗi lần sửa** tăng `content_version`, xóa kết quả QA cũ và đưa bài về `DRAFT` (mất hiệu lực duyệt). Người duyệt phải gửi đúng phiên bản đã xem.
 - **Duyệt chạy lại QA ngay lúc duyệt** (link/giấy phép/giá có thể đã đổi từ lúc gửi).
 - **Tách quyền** (mặc định bật): người sửa/soạn cuối cùng không tự duyệt bài của mình (403). Bản nháp AI chưa ai sửa thì ai có quyền duyệt cũng duyệt được. Tắt bằng `PATCH .../settings {"separationOfDuties": false}` (ghi nhật ký kiểm toán).
-- `LLM_PROVIDER=mock` (mặc định): bản nháp mẫu bắt đầu bằng `[MẪU]`, QA chặn cho tới khi bạn viết lại. Giá trị khác trả 503 cho tới khi có nhà cung cấp thật.
+- `LLM_PROVIDER=mock` (mặc định): bản nháp mẫu bắt đầu bằng `[MẪU]`, QA chặn cho tới khi bạn viết lại. `LLM_PROVIDER=claude`: gọi API của Claude (xem mục "Bật AI thật" bên dưới). Bản nháp từ Claude vẫn luôn ở trạng thái DRAFT, qua QA và cần người duyệt.
 
 ## Chạy thử (máy của bạn)
 
@@ -185,3 +185,14 @@ băm mật khẩu, token, vai trò/quyền, slug, chính sách refresh token (qu
 
 Lưu file media thật (chọn nơi lưu trữ), màn hình giao diện cho sản phẩm/media, tích hợp Shopee chính thức, nhà cung cấp LLM thật (Claude API), xem trước/lưu file media thật, đăng Threads (Phase 5),
 analytics + n8n (Phase 6), ESLint, integration test, Dockerfile cho ứng dụng.
+
+
+## Bật AI thật (Claude)
+
+1. Tạo khóa tại Anthropic Console (Settings → API keys), nạp tín dụng và đặt hạn mức chi tiêu hằng tháng cho workspace riêng.
+2. Chuyển repo sang **Private** trước khi đặt khóa thật vào bất cứ đâu gần repo.
+3. Trong `backend/`: `npm install @anthropic-ai/sdk` rồi commit `package.json` và `package-lock.json`.
+4. Trong `backend/.env` (không commit): `LLM_PROVIDER=claude`, `ANTHROPIC_API_KEY=<khóa>`, tùy chọn `ANTHROPIC_MODEL`.
+5. Khởi động lại backend. Thiếu khóa, khóa là giá trị mẫu hoặc thiếu gói SDK thì backend báo lỗi ngay khi khởi động.
+
+AI chỉ nhận tên, danh mục và mô tả sản phẩm (mô tả được coi là dữ liệu không tin cậy). Lỗi từ Claude được chuyển thành 503/502 với thông báo chung, không lộ khóa. **Chưa kiểm chứng:** cuộc gọi thật tới API (sandbox không có mạng và khóa); phần còn lại đã test bằng client giả.
