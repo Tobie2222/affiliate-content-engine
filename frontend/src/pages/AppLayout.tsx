@@ -51,6 +51,7 @@ export function AppLayout() {
           <li><NavLink to="/office">Văn phòng AI</NavLink></li>
           <li><NavLink to="/content">Bài viết</NavLink></li>
           <li><NavLink to="/products">Sản phẩm</NavLink></li>
+          <li><NavLink to="/media">Media</NavLink></li>
         </ul>
 
         <div className="side-foot">

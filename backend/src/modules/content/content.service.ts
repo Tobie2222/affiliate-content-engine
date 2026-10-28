@@ -45,6 +45,11 @@ const EDITABLE: ReadonlyArray<ContentStatus> = [
   ContentStatus.Blocked,
 ];
 
+/** So khớp không phân biệt hoa thường và khoảng trắng thừa. */
+function normalizeText(text: string): string {
+  return text.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
 function reviewNote(note: string | undefined): string {
   return note?.trim() ?? '';
 }
@@ -327,7 +332,18 @@ export class ContentService {
     }
     if (post.mediaAssetId) {
       try {
-        await this.media.assertUsable(organizationId, post.mediaAssetId, now);
+        const assessment = await this.media.assertUsable(organizationId, post.mediaAssetId, now);
+        // Giấy phép CC BY bắt buộc ghi nguồn: bài phải chứa nguyên văn dòng ghi nguồn đã khai báo.
+        const haystack = normalizeText(`${post.body}\n${post.disclosureText}`);
+        for (const attribution of assessment.attributions) {
+          if (!haystack.includes(normalizeText(attribution))) {
+            findings.push({
+              rule: 'MEDIA_RIGHTS',
+              severity: 'FAIL',
+              message: `Media yêu cầu ghi nguồn. Hãy thêm nguyên văn vào bài: "${attribution}"`,
+            });
+          }
+        }
       } catch (error) {
         const message = error instanceof Error ? error.message : 'Media không dùng được.';
         findings.push({ rule: 'MEDIA_RIGHTS', severity: 'FAIL', message });

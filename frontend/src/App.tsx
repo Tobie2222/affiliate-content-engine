@@ -4,8 +4,11 @@ import { OrgProvider } from './org/OrgContext';
 import { AppLayout } from './pages/AppLayout';
 import { ContentPage } from './pages/ContentPage';
 import { LoginPage } from './pages/LoginPage';
+import { MediaDetailPage } from './pages/MediaDetailPage';
+import { MediaPage } from './pages/MediaPage';
 import { OfficePage } from './pages/OfficePage';
 import { PostDetailPage } from './pages/PostDetailPage';
+import { ProductDetailPage } from './pages/ProductDetailPage';
 import { ProductsPage } from './pages/ProductsPage';
 
 function Protected() {
@@ -30,6 +33,9 @@ export function App() {
       <Route element={<Protected />}>
         <Route path="/office" element={<OfficePage />} />
         <Route path="/products" element={<ProductsPage />} />
+        <Route path="/products/:productId" element={<ProductDetailPage />} />
+        <Route path="/media" element={<MediaPage />} />
+        <Route path="/media/:assetId" element={<MediaDetailPage />} />
         <Route path="/content" element={<ContentPage />} />
         <Route path="/content/:postId" element={<PostDetailPage />} />
       </Route>

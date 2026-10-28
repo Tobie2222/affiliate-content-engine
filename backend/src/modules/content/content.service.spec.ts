@@ -96,6 +96,7 @@ function setup(options: { llm?: LlmProvider; sod?: boolean } = {}) {
   const state = {
     linkStatus: { ok: true } as { ok: true } | { ok: false; reason: string },
     mediaOk: true,
+    attributions: [] as string[],
     price: null as number | null,
   };
   const products = {
@@ -139,7 +140,7 @@ function setup(options: { llm?: LlmProvider; sod?: boolean } = {}) {
       if (!state.mediaOk) {
         throw new ConflictException('Giấy phép media đã hết hạn.');
       }
-      return {};
+      return { attributions: state.attributions };
     }),
   };
   const office = { emit: jest.fn(async (_input: unknown) => ({})) };
@@ -353,6 +354,28 @@ describe('ContentService.submit / withdraw', () => {
       body: GOOD_BODY,
     });
     await expect(ctx.service.submit(ORG_A, EDITOR, post.id, T0)).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('media CC BY: bài phải có nguyên văn dòng ghi nguồn mới gửi duyệt được', async () => {
+    const ctx = setup();
+    ctx.state.attributions = ['Ảnh: Nguyễn An (CC BY 4.0)'];
+    const post = await ctx.service.create(ORG_A, EDITOR, {
+      productId: PRODUCT,
+      affiliateLinkId: LINK,
+      mediaAssetId: 'm-1',
+      body: GOOD_BODY,
+    });
+    await expect(ctx.service.submit(ORG_A, EDITOR, post.id, T0)).rejects.toBeInstanceOf(BadRequestException);
+    const report = (await ctx.service.get(ORG_A, post.id)).post.qaReport;
+    expect(report?.findings.some((f) => f.rule === 'MEDIA_RIGHTS' && f.message.includes('Nguyễn An'))).toBe(true);
+
+    // Thêm dòng ghi nguồn (không phân biệt hoa thường/khoảng trắng) thì qua.
+    const edited = await ctx.service.update(ORG_A, EDITOR, post.id, {
+      expectedVersion: 1,
+      body: `${GOOD_BODY}  ẢNH: nguyễn an   (CC BY 4.0)`,
+    });
+    const submitted = await ctx.service.submit(ORG_A, EDITOR, edited.id, T0);
+    expect(submitted.status).toBe(ContentStatus.PendingApproval);
   });
 
   it('chỉ gửi duyệt được bài DRAFT', async () => {

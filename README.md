@@ -13,6 +13,7 @@ Xem thiết kế ở [`docs/PHASE0.md`](docs/PHASE0.md).
 - **Phase 3b**: hồ sơ media và giấy phép (xem bên dưới). Giao diện web: đăng nhập, Văn phòng AI 3D.
 - **Phase 4a** (backend): soạn bài, AI đề xuất bản nháp, QA tự động, gửi duyệt và duyệt bởi người (xem bên dưới).
 - **Phase 4b** (web): màn hình **Bài viết**: danh sách, tạo bài (AI đề xuất / tự soạn), báo cáo QA, sửa, gửi duyệt, duyệt, lịch sử.
+- **Phase 4c** (web): màn hình **Sản phẩm** (thêm tay, nhập CSV có chạy thử, đồng bộ giả lập, link: thêm/xác minh/thu hồi) và **Media** (thêm, khai báo và duyệt giấy phép, lưu trữ, kiểm tra lại). Vá QA: media CC BY bắt buộc bài chứa nguyên văn dòng ghi nguồn.
 
 ## Cấu hình bắt buộc cho Phase 2
 
@@ -113,7 +114,7 @@ Migration `1760000500000-ContentPosts` (bảng `content_posts`, `content_post_ve
 
 Nguyên tắc:
 - **AI chỉ đề xuất.** Bản nháp luôn ở `DRAFT`, chưa có "người soạn"; không có đường nào để AI duyệt hay đăng. Agent "Viết bài" đang tạm dừng thì `generate` bị từ chối (409) và không gọi LLM.
-- **QA tự động** (`content-rules.ts`, logic thuần): độ dài Threads (500 ký tự), có dòng công khai hoa hồng, đúng một link affiliate do hệ thống thêm, câu cam kết/y tế bị cấm, giá nêu trong bài khớp giá đã xác minh (giá không rõ ≠ 0), trùng lặp bài gần đây, nhãn `[MẪU]` còn sót, trạng thái link, giấy phép media. Có mục FAIL thì không gửi duyệt được; mục WARN chỉ để người duyệt cân nhắc.
+- **QA tự động** (`content-rules.ts`, logic thuần): độ dài Threads (500 ký tự), có dòng công khai hoa hồng, đúng một link affiliate do hệ thống thêm, câu cam kết/y tế bị cấm, giá nêu trong bài khớp giá đã xác minh (giá không rõ ≠ 0), trùng lặp bài gần đây, nhãn `[MẪU]` còn sót, trạng thái link, giấy phép media (gồm dòng ghi nguồn bắt buộc của giấy phép CC BY: bài phải chứa nguyên văn). Có mục FAIL thì không gửi duyệt được; mục WARN chỉ để người duyệt cân nhắc.
 - **Mỗi lần sửa** tăng `content_version`, xóa kết quả QA cũ và đưa bài về `DRAFT` (mất hiệu lực duyệt). Người duyệt phải gửi đúng phiên bản đã xem.
 - **Duyệt chạy lại QA ngay lúc duyệt** (link/giấy phép/giá có thể đã đổi từ lúc gửi).
 - **Tách quyền** (mặc định bật): người sửa/soạn cuối cùng không tự duyệt bài của mình (403). Bản nháp AI chưa ai sửa thì ai có quyền duyệt cũng duyệt được. Tắt bằng `PATCH .../settings {"separationOfDuties": false}` (ghi nhật ký kiểm toán).
@@ -142,7 +143,15 @@ npm run start:dev
 ## Giao diện web (`frontend/`)
 
 React 18 + Vite + TypeScript. Hiện có: đăng nhập/đăng ký, chọn hoặc tạo tổ chức, **Văn phòng AI** (bản đồ 3D xoay được bằng CSS 3D, có thể chuyển về 2D;
-bong bóng thoại, mũi tên bàn giao, tạm dừng từng bộ phận, chạy mô phỏng) và trang Sản phẩm (tạm thời chỉ trỏ tới Swagger).
+bong bóng thoại, mũi tên bàn giao, tạm dừng từng bộ phận, chạy mô phỏng) và các trang Sản phẩm, Media, Bài viết (mô tả bên dưới).
+
+**Sản phẩm** (`/products`, `/products/:id`): danh sách có tìm kiếm; thêm tay (giá/hoa hồng để trống = "chưa biết", không bị đổi thành 0; số có dấu phân cách hàng nghìn bị từ chối thay vì hiểu nhầm);
+nhập CSV với bước "Kiểm tra trước" không ghi gì rồi mới nhập; đồng bộ Shopee **giả lập**; chi tiết có độ mới của giá, điểm dữ liệu giải thích từng phần, và danh sách link
+(thêm link tự có, tạo link giả lập, **xác minh** cần xác nhận hai bước, thu hồi). Link tự nhập luôn ở trạng thái chưa xác minh.
+
+**Media** (`/media`, `/media/:id`): hệ thống chưa lưu file, chỉ lưu địa chỉ https; khai báo giấy phép theo loại (form báo rõ trường nào bắt buộc, khớp quy tắc máy chủ),
+người có quyền duyệt xác nhận hoặc từ chối (lý do bắt buộc khi từ chối); trang chi tiết tính lại "có dùng được không" theo thời điểm hiện tại và nêu dòng ghi nguồn bắt buộc.
+Ngày hiệu lực hiểu theo giờ Việt Nam. Không hiển thị bản xem trước ảnh từ địa chỉ ngoài (tránh tải nội dung lạ).
 
 **Bài viết** (`/content`, `/content/:postId`): lọc theo trạng thái; tạo bài bằng AI hoặc tự soạn (có đếm ký tự theo giới hạn 500 của Threads);
 xem báo cáo QA tách lỗi (chặn gửi duyệt) và cảnh báo (để người duyệt cân nhắc); sửa có kiểm tra xung đột phiên bản (không ghi đè thay đổi của người khác);
@@ -154,7 +163,7 @@ không chọn được "Duyệt" (máy chủ cũng chặn). OWNER có công tắ
 cd frontend
 npm install
 npm run dev                     # http://localhost:5173
-npm test                        # test logic thuần (SSE parser, reducer văn phòng, quyền/QA của màn hình bài viết)
+npm test                        # test logic thuần (SSE, reducer văn phòng, bài viết, sản phẩm, media)
 npm run typecheck
 ```
 
@@ -170,9 +179,9 @@ Môi trường dựng mã không cài được package npm (proxy chặn registr
 băm mật khẩu, token, vai trò/quyền, slug, chính sách refresh token (qua bộ chạy tối giản, không phải jest).
 **Chưa chạy**: `npm run typecheck`/`build`, jest cho phần NestJS (kể cả `content.service.spec.ts`, mới chỉ chạy qua bộ chạy tối giản với kho dữ liệu giả), migration 002-004 trên PostgreSQL (004 = ContentPosts), và toàn bộ luồng
 đăng nhập/tổ chức qua HTTP, và `npm install`/`npm run dev`/`npm run typecheck` của `frontend/`
-(đã kiểm tra: logic thuần qua bộ chạy tối giản, cú pháp TSX, kết xuất bản đồ và các trang Bài viết bằng React + Chromium với dữ liệu giả; chưa thử luồng bấm nút thật với backend). Hãy chạy `npm install && npm run typecheck && npm test` và báo lại lỗi nếu có.
+(đã kiểm tra: logic thuần qua bộ chạy tối giản, cú pháp TSX, kết xuất bản đồ và các trang Bài viết/Sản phẩm/Media bằng React + Chromium với dữ liệu giả; chưa thử luồng bấm nút thật với backend). Hãy chạy `npm install && npm run typecheck && npm test` và báo lại lỗi nếu có.
 
 ## Chưa làm (Phase sau)
 
-Lưu file media thật (chọn nơi lưu trữ), màn hình giao diện cho sản phẩm/media, tích hợp Shopee chính thức, nhà cung cấp LLM thật (Claude API), màn hình media và giấy phép, đăng Threads (Phase 5),
+Lưu file media thật (chọn nơi lưu trữ), màn hình giao diện cho sản phẩm/media, tích hợp Shopee chính thức, nhà cung cấp LLM thật (Claude API), xem trước/lưu file media thật, đăng Threads (Phase 5),
 analytics + n8n (Phase 6), ESLint, integration test, Dockerfile cho ứng dụng.
