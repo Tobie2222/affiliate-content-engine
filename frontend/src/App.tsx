@@ -10,6 +10,7 @@ import { OfficePage } from './pages/OfficePage';
 import { PostDetailPage } from './pages/PostDetailPage';
 import { ProductDetailPage } from './pages/ProductDetailPage';
 import { ProductsPage } from './pages/ProductsPage';
+import { SocialAccountsPage } from './pages/SocialAccountsPage';
 
 function Protected() {
   const { status } = useAuth();
@@ -38,6 +39,7 @@ export function App() {
         <Route path="/media/:assetId" element={<MediaDetailPage />} />
         <Route path="/content" element={<ContentPage />} />
         <Route path="/content/:postId" element={<PostDetailPage />} />
+        <Route path="/accounts" element={<SocialAccountsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/office" replace />} />
     </Routes>

@@ -212,3 +212,12 @@ Luồng: bài `APPROVED` → **lên lịch** (`SCHEDULED`) → worker đăng →
 
 **Chưa kiểm chứng:** logic đã test bằng kho dữ liệu giả (32 test), chưa chạy với PostgreSQL/Redis thật; chưa gõ kiểu bằng `tsc` với các gói Nest thật.
 **Chưa làm:** đăng lên Threads thật (OAuth, token, App Review), tải media thật lên Threads (cần kho file và URL công khai), giao diện lên lịch (Phase 5b), `APP_ROLE=api` vẫn khởi động processor (chỉ tắt việc đặt nhịp).
+
+## Phase 5b: giao diện lên lịch đăng
+
+- **Tài khoản Threads** (`/accounts`, mục "Tài khoản Threads" ở thanh bên): xem danh sách; OWNER/ADMIN thêm tài khoản giả lập và ngắt kết nối. Trang nói rõ chỉ có tài khoản giả lập.
+- **Trang bài viết** có khối "Đăng bài" theo trạng thái: `APPROVED` → chọn tài khoản và giờ (giờ Việt Nam, kiểm tra ≥ 2 phút và ≤ 60 ngày giống máy chủ) → "Lên lịch đăng"; `SCHEDULED` → "Hủy lịch"; `PUBLISHED` → kết quả (tài khoản giả lập ghi rõ không có bài thật); `FAILED` → lý do bằng lời thường, và nếu kết quả không rõ thì phải tick xác nhận "đã kiểm tra trên Threads, bài chưa được đăng" mới thử lại được.
+- Quyền ở giao diện khớp máy chủ (`publish.manage`: OWNER, ADMIN, CONTENT_EDITOR; `social.manage`: OWNER, ADMIN); máy chủ vẫn kiểm tra lại.
+- Test thuần (`publishing.spec.ts`): giờ Việt Nam, kiểm tra giờ đăng, thao tác theo trạng thái/vai trò, nội dung lỗi.
+
+**Chưa kiểm chứng:** `npm run typecheck` của frontend (sandbox không có kiểu React), chạy thật trên trình duyệt với API thật. Màn hình mới chỉ được dựng thử bằng render tĩnh và chụp ảnh.

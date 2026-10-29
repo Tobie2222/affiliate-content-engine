@@ -20,6 +20,8 @@ import {
 } from '../content/content';
 import { LengthMeter } from '../content/LengthMeter';
 import { QaReportView } from '../content/QaReportView';
+import { PublishPanel } from '../publishing/PublishPanel';
+import type { PostPublishing, SocialAccount } from '../publishing/publishing';
 import { useOrg } from '../org/OrgContext';
 
 interface Member {
@@ -46,6 +48,12 @@ export function PostDetailPage() {
   const product = useApi<ProductItem>(
     orgId && detail.data ? `/organizations/${orgId}/products/${detail.data.post.productId}` : null,
   );
+
+  const showPublish = detail.data
+    ? ['APPROVED', 'SCHEDULED', 'PUBLISHING', 'PUBLISHED', 'FAILED'].includes(detail.data.post.status)
+    : false;
+  const publishing = useApi<PostPublishing>(orgId && postId && showPublish ? `/organizations/${orgId}/content/posts/${postId}/publishing` : null);
+  const accounts = useApi<SocialAccount[]>(orgId && showPublish ? `/organizations/${orgId}/social-accounts` : null);
 
   const [actionError, setActionError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -95,11 +103,11 @@ export function PostDetailPage() {
     setActionError(null);
     try {
       await work();
-      await detail.reload();
+      await Promise.all([detail.reload(), publishing.reload()]);
       return true;
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Thao tác thất bại.');
-      await detail.reload();
+      await Promise.all([detail.reload(), publishing.reload()]);
       return false;
     } finally {
       setBusy(false);
@@ -216,7 +224,24 @@ export function PostDetailPage() {
             />
           )}
 
-          {!actions.canSubmit && !actions.canWithdraw && !actions.canReview && (
+          {showPublish && (
+            <PublishPanel
+              post={post}
+              role={current.role}
+              info={publishing.data}
+              accounts={accounts.data ?? []}
+              busy={busy}
+              onSchedule={(accountId, scheduledFor) =>
+                run(() => api(`${base}/schedule`, { method: 'POST', body: { socialAccountId: accountId, scheduledFor, expectedVersion: post.contentVersion } }))
+              }
+              onUnschedule={() => run(() => api(`${base}/unschedule`, { method: 'POST' }))}
+              onRetry={(confirmNotPublished) =>
+                run(() => api(`${base}/retry-publish`, { method: 'POST', body: confirmNotPublished ? { confirmNotPublished: true } : {} }))
+              }
+            />
+          )}
+
+          {!showPublish && !actions.canSubmit && !actions.canWithdraw && !actions.canReview && (
             <section className="card">
               <h2>Trạng thái</h2>
               <p className="muted small">{statusHint(post)}</p>
@@ -232,8 +257,6 @@ function statusHint(post: ApiPost): string {
   switch (post.status) {
     case 'PENDING_APPROVAL':
       return 'Bài đang chờ người có quyền duyệt xem xét.';
-    case 'APPROVED':
-      return 'Bài đã được duyệt. Việc lên lịch và đăng sẽ có ở giai đoạn sau.';
     case 'REJECTED':
       return 'Bài đã bị từ chối và không đi tiếp được. Bạn có thể tạo bài mới.';
     case 'CHANGES_REQUESTED':
