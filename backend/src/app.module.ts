@@ -8,6 +8,7 @@ import { validateEnv } from './config/env.validation';
 import { HealthModule } from './health/health.module';
 import { AffiliateModule } from './modules/affiliate/affiliate.module';
 import { AgentsModule } from './modules/agents/agents.module';
+import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ContentModule } from './modules/content/content.module';
 import { MediaModule } from './modules/media/media.module';
@@ -57,6 +58,7 @@ import { OrganizationsModule } from './modules/organizations/organizations.modul
     MediaModule,
     ContentModule,
     PublishingModule,
+    AnalyticsModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

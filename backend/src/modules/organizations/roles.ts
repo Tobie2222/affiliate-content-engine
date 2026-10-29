@@ -15,6 +15,8 @@ export enum Permission {
   ContentWrite = 'content.write',
   ContentReview = 'content.review',
   AnalyticsRead = 'analytics.read',
+  /** Nhập số liệu bài đăng và đơn hàng affiliate. */
+  AnalyticsWrite = 'analytics.write',
   CatalogRead = 'catalog.read',
   CatalogWrite = 'catalog.write',
   /** Xác minh link affiliate do người dùng tự nhập (bước kiểm tra của con người). */
@@ -39,7 +41,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlyArray<Permission>>>
     P.ContentRead, P.ContentWrite, P.ContentReview, P.AnalyticsRead,
     P.CatalogRead, P.CatalogWrite, P.LinksVerify,
     P.MediaRead, P.MediaWrite, P.MediaReview,
-    P.SocialRead, P.SocialManage, P.PublishManage,
+    P.SocialRead, P.SocialManage, P.PublishManage, P.AnalyticsWrite,
   ],
   [Role.ContentEditor]: [
     P.OfficeRead, P.ContentRead, P.ContentWrite, P.CatalogRead, P.CatalogWrite,
@@ -49,7 +51,7 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlyArray<Permission>>>
     P.OfficeRead, P.ContentRead, P.ContentReview, P.CatalogRead, P.LinksVerify,
     P.MediaRead, P.MediaReview, P.SocialRead,
   ],
-  [Role.Analyst]: [P.OfficeRead, P.ContentRead, P.AnalyticsRead, P.CatalogRead, P.MediaRead, P.SocialRead],
+  [Role.Analyst]: [P.OfficeRead, P.ContentRead, P.AnalyticsRead, P.CatalogRead, P.MediaRead, P.SocialRead, P.AnalyticsWrite],
 };
 
 export function hasPermission(role: Role, permission: Permission): boolean {

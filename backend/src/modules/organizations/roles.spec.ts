@@ -41,6 +41,12 @@ describe('quyền theo vai trò', () => {
     }
   });
 
+  it('nhập số liệu: OWNER, ADMIN, ANALYST', () => {
+    for (const role of ALL_ROLES) {
+      expect(hasPermission(role, Permission.AnalyticsWrite)).toBe(role === Role.Owner || role === Role.Admin || role === Role.Analyst);
+    }
+  });
+
   it('quyền duyệt bài chỉ thuộc OWNER, ADMIN, REVIEWER', () => {
     for (const role of ALL_ROLES) {
       expect(hasPermission(role, Permission.ContentReview)).toBe(
