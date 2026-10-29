@@ -142,6 +142,7 @@ export function ProductDetailPage() {
                 return (
                   <li key={l.id}>
                     <p className="link-url">{l.affiliateUrl}</p>
+                    {l.subId && <p className="muted small">sub_id: {l.subId}</p>}
                     <div className="row">
                       <Badge tone={LINK_TONE[l.linkStatus]}>{LINK_STATUS_LABEL[l.linkStatus]}</Badge>
                       <Badge>{LINK_SOURCE_LABEL[l.source]}</Badge>
@@ -201,6 +202,7 @@ function AddLinkCard({
 }) {
   const connections = useApi<ApiConnection[]>(`/organizations/${orgId}/affiliate-connections`);
   const [url, setUrl] = useState('');
+  const [userSubId, setUserSubId] = useState('');
   const [connectionId, setConnectionId] = useState('');
   const [subId, setSubId] = useState('');
   const list = connections.data ?? [];
@@ -209,8 +211,13 @@ function AddLinkCard({
 
   async function addUrl(e: FormEvent) {
     e.preventDefault();
-    await onAct(() => api(base, { method: 'POST', body: { affiliateUrl: url.trim() } }), 'Đã thêm link. Link ở trạng thái chưa xác minh cho tới khi người có quyền xác minh.');
+    const sub = userSubId.trim();
+    await onAct(
+      () => api(base, { method: 'POST', body: { affiliateUrl: url.trim(), ...(sub ? { subId: sub } : {}) } }),
+      'Đã thêm link. Link ở trạng thái chưa xác minh cho tới khi người có quyền xác minh.',
+    );
     setUrl('');
+    setUserSubId('');
   }
 
   async function generate(e: FormEvent) {
@@ -230,6 +237,11 @@ function AddLinkCard({
           Link affiliate của bạn
           <input value={url} onChange={(e) => setUrl(e.target.value)} placeholder="https://s.shopee.vn/AbCdEf" maxLength={2048} />
           <small className="muted">Chỉ nhận link thuộc tên miền Shopee affiliate. Link mới nhập luôn ở trạng thái chưa xác minh.</small>
+        </label>
+        <label>
+          Mã theo dõi sub_id (không bắt buộc)
+          <input value={userSubId} onChange={(e) => setUserSubId(e.target.value)} maxLength={50} placeholder="bai-001" />
+          <small className="muted">Nhập đúng sub_id bạn đã đặt khi tạo link trên Shopee. Dùng để gắn đơn hàng vào đúng bài, nên mỗi link cần sub_id riêng.</small>
         </label>
         <button type="submit" className="btn" disabled={busy || url.trim() === ''}>Thêm link</button>
       </form>

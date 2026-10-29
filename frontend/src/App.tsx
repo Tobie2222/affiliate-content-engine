@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './auth/AuthContext';
 import { OrgProvider } from './org/OrgContext';
+import { AnalyticsPage } from './pages/AnalyticsPage';
 import { AppLayout } from './pages/AppLayout';
 import { ContentPage } from './pages/ContentPage';
 import { LoginPage } from './pages/LoginPage';
@@ -39,6 +40,7 @@ export function App() {
         <Route path="/media/:assetId" element={<MediaDetailPage />} />
         <Route path="/content" element={<ContentPage />} />
         <Route path="/content/:postId" element={<PostDetailPage />} />
+        <Route path="/analytics" element={<AnalyticsPage />} />
         <Route path="/accounts" element={<SocialAccountsPage />} />
       </Route>
       <Route path="*" element={<Navigate to="/office" replace />} />

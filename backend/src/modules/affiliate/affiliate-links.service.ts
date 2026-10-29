@@ -18,6 +18,9 @@ import { SHOPEE_PROVIDER, ShopeeProvider } from './providers/shopee-provider.typ
 
 export type LinkView = AffiliateLink & { publishable: PublishableCheck };
 
+/** Mã theo dõi: chữ, số, gạch ngang, gạch dưới (khớp DTO tạo link qua nhà cung cấp). */
+export const SUB_ID_PATTERN = /^[A-Za-z0-9_-]{1,50}$/;
+
 function isUniqueViolation(error: unknown): boolean {
   return (
     typeof error === 'object' &&
@@ -62,17 +65,30 @@ export class AffiliateLinksService {
   /**
    * Link do người dùng tự nhập. Hệ thống KHÔNG tự bịa link. Link ở trạng thái UNVERIFIED cho tới khi
    * người có quyền xác minh; chưa xác minh thì không đăng được.
+   * `subId` là mã theo dõi bạn đã đặt khi tạo link trên Shopee (hệ thống không kiểm tra được nó có nằm trong link hay không).
+   * Dùng để gắn đơn hàng vào đúng bài, nên mỗi link nên có sub_id riêng và không trùng link khác trong tổ chức.
    */
   async createUserSupplied(
     organizationId: string,
     actorId: string,
     productId: string,
     rawUrl: string,
+    subId?: string,
   ): Promise<LinkView> {
     const product = await this.products.requireProduct(organizationId, productId);
     const check = validateUserAffiliateUrl(rawUrl);
     if (!check.ok) {
       throw new BadRequestException(check.reason);
+    }
+    const trackingId = subId?.trim() ? subId.trim() : null;
+    if (trackingId !== null) {
+      if (!SUB_ID_PATTERN.test(trackingId)) {
+        throw new BadRequestException('sub_id chỉ gồm chữ, số, "-" và "_" (tối đa 50 ký tự).');
+      }
+      const clash = await this.links.findOne({ where: { organizationId, subId: trackingId } });
+      if (clash) {
+        throw new ConflictException('sub_id này đã được dùng cho một link khác. Mỗi link cần sub_id riêng để gắn đơn hàng đúng bài.');
+      }
     }
     const link = await this.insert({
       organizationId,
@@ -81,7 +97,7 @@ export class AffiliateLinksService {
       destinationUrl: product.productUrl,
       affiliateUrl: check.url,
       externalLinkId: null,
-      subId: null,
+      subId: trackingId,
       source: 'USER_SUPPLIED',
       linkStatus: 'UNVERIFIED',
       verifiedBy: null,

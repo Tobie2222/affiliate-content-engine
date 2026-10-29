@@ -136,6 +136,14 @@ export class CreateLinkDto {
   @IsString()
   @MaxLength(2048)
   affiliateUrl: string;
+
+  @ApiPropertyOptional({
+    description: 'Mã theo dõi (sub_id) bạn đã đặt khi tạo link trên Shopee, để gắn đơn hàng đúng bài. Không trùng link khác.',
+  })
+  @IsOptional()
+  @IsString()
+  @Matches(/^[A-Za-z0-9_-]{1,50}$/, { message: 'subId chỉ gồm chữ, số, "-" và "_" (tối đa 50 ký tự).' })
+  subId?: string;
 }
 
 export class GenerateLinkDto {

@@ -467,3 +467,18 @@ input[type='search'] { min-width: 220px; }
 .check-inline input { width: 16px; min-height: 16px; }
 .list-foot { padding: 10px 16px 14px; margin: 0; border-top: 1px solid var(--line); }
 @media (max-width: 560px) { .facts.single { grid-template-columns: 1fr; } }
+
+/* Số liệu */
+.stat-value { margin: 4px 0; font-size: 1.35rem; font-weight: 700; }
+.post-rows { list-style: none; margin: 0; padding: 0; display: grid; gap: 14px; }
+.post-rows > li { padding-top: 14px; border-top: 1px solid var(--line); }
+.post-rows > li:first-child { padding-top: 0; border-top: 0; }
+.row.between { justify-content: space-between; }
+.metric-line { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; margin: 8px 0 4px; }
+.metric-line dt { font-size: 0.78rem; color: var(--ink-soft); }
+.metric-line dd { margin: 0; font-weight: 700; }
+.metrics-inputs { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 8px; }
+.reason-list { margin: 4px 0 0; padding-left: 18px; }
+@media (max-width: 640px) {
+  .metric-line, .metrics-inputs { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}

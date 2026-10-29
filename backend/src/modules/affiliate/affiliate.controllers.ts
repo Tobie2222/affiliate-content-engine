@@ -115,7 +115,7 @@ export class ProductsController {
     @CurrentUser() user: Actor,
     @Body() dto: CreateLinkDto,
   ) {
-    return this.links.createUserSupplied(orgId, user.id, productId, dto.affiliateUrl);
+    return this.links.createUserSupplied(orgId, user.id, productId, dto.affiliateUrl, dto.subId);
   }
 
   /** Tạo link qua nhà cung cấp. Hiện là Shopee GIẢ LẬP (link nguồn MOCK). */

@@ -221,3 +221,14 @@ Luồng: bài `APPROVED` → **lên lịch** (`SCHEDULED`) → worker đăng →
 - Test thuần (`publishing.spec.ts`): giờ Việt Nam, kiểm tra giờ đăng, thao tác theo trạng thái/vai trò, nội dung lỗi.
 
 **Chưa kiểm chứng:** `npm run typecheck` của frontend (sandbox không có kiểu React), chạy thật trên trình duyệt với API thật. Màn hình mới chỉ được dựng thử bằng render tĩnh và chụp ảnh.
+
+## Phase 6: số liệu bài đăng và đơn hàng affiliate
+
+- **Số liệu bài** (`/analytics`, mục "Số liệu"): chưa có API Threads nên **nhập tay** (lượt xem, thích, trả lời, đăng lại, trích dẫn). Ô trống = chưa biết (lưu NULL, hiện "—"), khác 0. Cảnh báo (vẫn lưu) nếu số thấp hơn lần nhập trước. OWNER, ADMIN, ANALYST được nhập (`analytics.write`).
+- **Đơn hàng**: nhập từ CSV báo cáo (`order_id, product_id, order_time, status, commission, currency, sub_id`). Có "Kiểm tra trước" (không ghi), nhập lại cùng báo cáo chỉ cập nhật (UNIQUE theo tổ chức + mã đơn + mã sản phẩm), giá trị chưa biết không xóa giá trị đã biết. Hoa hồng phải kèm `currency`; "15.000" bị từ chối vì dễ hiểu nhầm. Giờ không kèm múi giờ hiểu là giờ Việt Nam. Trạng thái chỉ nhận pending / completed / cancelled (không đoán nhãn tiếng Việt của Shopee).
+- **Gắn đơn vào bài** chỉ khi đủ căn cứ: `sub_id` khớp đúng một link, link đó dùng trong đúng một bài đã đăng, và đơn phát sinh sau giờ đăng. Còn lại nằm ở "Đơn chưa gắn được" kèm lý do, nhóm theo sản phẩm. Để gắn được: mỗi bài một link Shopee riêng với `sub_id` riêng, nhập `sub_id` khi thêm link (trang Sản phẩm; hệ thống không kiểm tra được sub_id có thật nằm trong link hay không), và giữ cột `sub_id` trong báo cáo đơn hàng.
+- Tổng không cộng lẫn các loại tiền; tổng lượt xem chỉ cộng các bài đã nhập và ghi rõ "x/y bài".
+- Migration mới `1760000700000-Analytics`.
+
+**Chưa kiểm chứng:** migration và truy vấn với PostgreSQL thật; `npm run typecheck` frontend; chạy trên trình duyệt với API thật. Đã test logic bằng kho dữ liệu giả (backend) và hàm thuần (frontend), và dựng thử giao diện bằng ảnh chụp.
+**Chưa làm:** lấy số liệu từ Threads API, lấy đơn từ Shopee API, báo cáo theo tài khoản/chiến dịch, xuất file.

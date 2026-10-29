@@ -52,6 +52,7 @@ export function AppLayout() {
           <li><NavLink to="/content">Bài viết</NavLink></li>
           <li><NavLink to="/products">Sản phẩm</NavLink></li>
           <li><NavLink to="/media">Media</NavLink></li>
+          <li><NavLink to="/analytics">Số liệu</NavLink></li>
           <li><NavLink to="/accounts">Tài khoản Threads</NavLink></li>
         </ul>
 
