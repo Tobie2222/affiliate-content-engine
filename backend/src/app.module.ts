@@ -11,6 +11,7 @@ import { AgentsModule } from './modules/agents/agents.module';
 import { AuthModule } from './modules/auth/auth.module';
 import { ContentModule } from './modules/content/content.module';
 import { MediaModule } from './modules/media/media.module';
+import { PublishingModule } from './modules/publishing/publishing.module';
 import { OrganizationsModule } from './modules/organizations/organizations.module';
 
 @Module({
@@ -55,6 +56,7 @@ import { OrganizationsModule } from './modules/organizations/organizations.modul
     AgentsModule,
     MediaModule,
     ContentModule,
+    PublishingModule,
   ],
   providers: [{ provide: APP_GUARD, useClass: ThrottlerGuard }],
 })

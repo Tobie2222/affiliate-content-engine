@@ -196,3 +196,19 @@ analytics + n8n (Phase 6), ESLint, integration test, Dockerfile cho ứng dụng
 5. Khởi động lại backend. Thiếu khóa, khóa là giá trị mẫu hoặc thiếu gói SDK thì backend báo lỗi ngay khi khởi động.
 
 AI chỉ nhận tên, danh mục và mô tả sản phẩm (mô tả được coi là dữ liệu không tin cậy). Lỗi từ Claude được chuyển thành 503/502 với thông báo chung, không lộ khóa. **Chưa kiểm chứng:** cuộc gọi thật tới API (sandbox không có mạng và khóa); phần còn lại đã test bằng client giả.
+
+## Phase 5a: lên lịch và đăng bài (backend, chế độ giả lập)
+
+Luồng: bài `APPROVED` → **lên lịch** (`SCHEDULED`) → worker đăng → `PUBLISHED` (hoặc `FAILED` / `BLOCKED`).
+
+- **Tài khoản Threads** (`/organizations/:orgId/social-accounts`): hiện chỉ có tài khoản **MOCK** (không gọi Threads, không lưu token). Kết nối thật bị từ chối rõ ràng. Tài khoản MOCK không đăng được trên production.
+- **Lên lịch** `POST /content/posts/:postId/schedule` `{socialAccountId, scheduledFor, expectedVersion}`: cần quyền `publish.manage` (OWNER, ADMIN, CONTENT_EDITOR). Chỉ bài đã duyệt đúng phiên bản hiện tại. Kiểm tra lại tài khoản, link affiliate, giấy phép media (và dòng ghi nguồn CC BY); không đạt thì 422 kèm lý do. Thời điểm đăng phải sau hiện tại ≥ 2 phút và ≤ 60 ngày.
+- **Hủy lịch** `POST .../unschedule`: bài về `APPROVED`. Không hủy được khi worker đã nhận việc.
+- **Worker**: mỗi 30 giây (BullMQ, repeatable) đăng việc đã đến giờ. PostgreSQL là nguồn sự thật, Redis chỉ làm nhịp, nên mất Redis không mất lịch. Kiểm tra lại mọi điều kiện NGAY TRƯỚC khi đăng; link bị thu hồi hoặc giấy phép hết hạn thì bài chuyển `BLOCKED`, không đăng. Việc được nhận bằng cập nhật có điều kiện nên hai worker không đăng trùng. Agent "Đăng bài" đang tạm dừng thì việc nằm lại hàng chờ.
+- **Idempotency**: mỗi lần lên lịch có khóa riêng (`publish_jobs.idempotency_key` UNIQUE), mỗi bài chỉ có một việc đang hoạt động, một bài chỉ đăng được một lần (`published_posts.content_post_id` UNIQUE).
+- **Thất bại**: `NOT_SENT` (chắc chắn chưa gửi) thử lại được ngay; `UNKNOWN` (hết thời gian chờ, không rõ bài đã lên chưa) **không tự thử lại**: `POST .../retry-publish` cần `confirmNotPublished: true` sau khi bạn kiểm tra trên Threads. Việc kẹt ở `PUBLISHING` > 10 phút được đánh dấu `UNKNOWN`.
+- **Dev**: `POST /organizations/:orgId/publishing/run-due` chạy ngay các việc đã đến giờ (tắt trên production).
+- Migration mới `1760000600000-Publishing`. Chạy `npm run migration:run` như các phase trước.
+
+**Chưa kiểm chứng:** logic đã test bằng kho dữ liệu giả (32 test), chưa chạy với PostgreSQL/Redis thật; chưa gõ kiểu bằng `tsc` với các gói Nest thật.
+**Chưa làm:** đăng lên Threads thật (OAuth, token, App Review), tải media thật lên Threads (cần kho file và URL công khai), giao diện lên lịch (Phase 5b), `APP_ROLE=api` vẫn khởi động processor (chỉ tắt việc đặt nhịp).

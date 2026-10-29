@@ -23,6 +23,11 @@ export enum Permission {
   MediaWrite = 'media.write',
   /** Xác nhận hoặc từ chối giấy phép media (bước kiểm tra của con người). */
   MediaReview = 'media.review',
+  SocialRead = 'social.read',
+  /** Kết nối / ngắt kết nối tài khoản mạng xã hội. */
+  SocialManage = 'social.manage',
+  /** Lên lịch, hủy lịch và thử lại việc đăng bài đã được duyệt. */
+  PublishManage = 'publish.manage',
 }
 
 const P = Permission;
@@ -34,16 +39,17 @@ export const ROLE_PERMISSIONS: Readonly<Record<Role, ReadonlyArray<Permission>>>
     P.ContentRead, P.ContentWrite, P.ContentReview, P.AnalyticsRead,
     P.CatalogRead, P.CatalogWrite, P.LinksVerify,
     P.MediaRead, P.MediaWrite, P.MediaReview,
+    P.SocialRead, P.SocialManage, P.PublishManage,
   ],
   [Role.ContentEditor]: [
     P.OfficeRead, P.ContentRead, P.ContentWrite, P.CatalogRead, P.CatalogWrite,
-    P.MediaRead, P.MediaWrite,
+    P.MediaRead, P.MediaWrite, P.SocialRead, P.PublishManage,
   ],
   [Role.Reviewer]: [
     P.OfficeRead, P.ContentRead, P.ContentReview, P.CatalogRead, P.LinksVerify,
-    P.MediaRead, P.MediaReview,
+    P.MediaRead, P.MediaReview, P.SocialRead,
   ],
-  [Role.Analyst]: [P.OfficeRead, P.ContentRead, P.AnalyticsRead, P.CatalogRead, P.MediaRead],
+  [Role.Analyst]: [P.OfficeRead, P.ContentRead, P.AnalyticsRead, P.CatalogRead, P.MediaRead, P.SocialRead],
 };
 
 export function hasPermission(role: Role, permission: Permission): boolean {

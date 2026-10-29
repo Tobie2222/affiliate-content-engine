@@ -73,6 +73,11 @@ export function composeText(body: string, disclosureText: string, affiliateUrl: 
   return text;
 }
 
+/** So khớp không phân biệt hoa thường và khoảng trắng thừa (dùng cho dòng ghi nguồn bắt buộc). */
+export function normalizeText(text: string): string {
+  return text.replace(/\s+/g, ' ').trim().toLowerCase();
+}
+
 /** Bỏ dấu tiếng Việt và hạ chữ thường để so khớp từ khóa không phụ thuộc cách gõ dấu. */
 export function fold(text: string): string {
   return text

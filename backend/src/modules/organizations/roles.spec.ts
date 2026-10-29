@@ -31,6 +31,16 @@ describe('quyền theo vai trò', () => {
     }
   });
 
+  it('lên lịch đăng: OWNER, ADMIN, CONTENT_EDITOR; kết nối tài khoản: OWNER, ADMIN; ai cũng xem được tài khoản', () => {
+    for (const role of ALL_ROLES) {
+      expect(hasPermission(role, Permission.PublishManage)).toBe(
+        role === Role.Owner || role === Role.Admin || role === Role.ContentEditor,
+      );
+      expect(hasPermission(role, Permission.SocialManage)).toBe(role === Role.Owner || role === Role.Admin);
+      expect(hasPermission(role, Permission.SocialRead)).toBe(true);
+    }
+  });
+
   it('quyền duyệt bài chỉ thuộc OWNER, ADMIN, REVIEWER', () => {
     for (const role of ALL_ROLES) {
       expect(hasPermission(role, Permission.ContentReview)).toBe(
