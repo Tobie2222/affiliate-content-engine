@@ -35,8 +35,10 @@ const BODY = 'Bình giữ nhiệt này mình dùng mỗi ngày đi làm, nước
 const DISCLOSURE = 'Mình nhận hoa hồng nếu bạn mua qua link này.';
 
 type Row = Record<string, unknown>;
-type Op = { _op: 'lte' | 'lt'; value: Date };
-const isOp = (v: unknown): v is Op => typeof v === 'object' && v !== null && '_op' in (v as object);
+/** Toán tử tìm kiếm của TypeORM (FindOperator): có `type` và `value`. Dùng đúng dạng thật để không phụ thuộc bản giả. */
+type Op = { type: string; value: Date };
+const isOp = (v: unknown): v is Op =>
+  typeof v === 'object' && v !== null && !(v instanceof Date) && 'type' in (v as object) && 'value' in (v as object);
 
 function fakeRepo(uniqueKeys: string[] = []) {
   const rows: Row[] = [];
@@ -47,7 +49,13 @@ function fakeRepo(uniqueKeys: string[] = []) {
       if (a === undefined) {
         return false;
       }
-      return expected._op === 'lte' ? a <= expected.value.getTime() : a < expected.value.getTime();
+      if (expected.type === 'lessThanOrEqual') {
+        return a <= expected.value.getTime();
+      }
+      if (expected.type === 'lessThan') {
+        return a < expected.value.getTime();
+      }
+      throw new Error(`Toán tử chưa được bản giả hỗ trợ: ${expected.type}`);
     }
     return actual === expected;
   };
