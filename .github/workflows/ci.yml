@@ -1,0 +1,108 @@
+# Kiểm tra tự động mỗi lần đẩy mã hoặc mở pull request.
+# Lưu ý: tệp này chưa được chạy thử trên GitHub khi viết; lần chạy đầu tiên là lần kiểm chứng.
+name: CI
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  backend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: ace
+          POSTGRES_PASSWORD: ci_password_only_for_tests
+          POSTGRES_DB: ace_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ace -d ace_ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 10
+    env:
+      NODE_ENV: test
+      DB_HOST: localhost
+      DB_PORT: "5432"
+      DB_USER: ace
+      DB_PASSWORD: ci_password_only_for_tests
+      DB_NAME: ace_ci
+      REDIS_HOST: localhost
+      REDIS_PORT: "6379"
+      JWT_ACCESS_SECRET: ci_only_secret_that_is_at_least_32_characters_long
+      LLM_PROVIDER: mock
+      SHOPEE_PROVIDER: mock
+      THREADS_PROVIDER: mock
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Cài gói
+        run: if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - name: Kiểm tra kiểu
+        run: npm run typecheck
+      - name: Chạy test
+        run: npm test
+      - name: Build
+        run: npm run build
+
+      # Kiểm tra migration trên PostgreSQL thật: chạy lên, hoàn tác hết từng bước, rồi chạy lại.
+      - name: Migration lên
+        run: npm run migration:run
+      - name: Migration hoàn tác từng bước
+        run: |
+          count=$(ls src/database/migrations/*.ts | wc -l)
+          for i in $(seq 1 "$count"); do npm run migration:revert; done
+      - name: Migration chạy lại
+        run: npm run migration:run
+
+      # Khởi động ứng dụng thật để kiểm tra toàn bộ injection (mọi module, provider, hàng đợi) và health check.
+      - name: Khởi động API và gọi health
+        run: |
+          node dist/main.js > api.log 2>&1 &
+          pid=$!
+          for i in $(seq 1 30); do
+            if curl -fsS http://localhost:3000/api/v1/health > /dev/null 2>&1; then ok=1; break; fi
+            sleep 2
+          done
+          if [ -z "${ok:-}" ]; then echo "API không khởi động được:"; cat api.log; kill $pid || true; exit 1; fi
+          curl -fsS http://localhost:3000/api/v1/health/ready
+          kill $pid || true
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Cài gói
+        run: if [ -f package-lock.json ]; then npm ci; else npm install; fi
+      - name: Kiểm tra kiểu
+        run: npm run typecheck
+      - name: Chạy test
+        run: npm test
+      - name: Build
+        run: npm run build

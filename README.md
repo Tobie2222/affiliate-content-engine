@@ -232,3 +232,9 @@ Luồng: bài `APPROVED` → **lên lịch** (`SCHEDULED`) → worker đăng →
 
 **Chưa kiểm chứng:** migration và truy vấn với PostgreSQL thật; `npm run typecheck` frontend; chạy trên trình duyệt với API thật. Đã test logic bằng kho dữ liệu giả (backend) và hàm thuần (frontend), và dựng thử giao diện bằng ảnh chụp.
 **Chưa làm:** lấy số liệu từ Threads API, lấy đơn từ Shopee API, báo cáo theo tài khoản/chiến dịch, xuất file.
+
+## Vận hành và kiểm tra tự động
+
+- `docs/OPERATIONS.md`: biến môi trường, tiến trình nền, xử lý sự cố đăng bài, khóa API, sao lưu, giới hạn hiện tại.
+- Quét giấy phép media tự động mỗi 6 giờ cho mọi tổ chức (BullMQ). Chỉ cập nhật bản lưu cho danh sách; QA và đăng bài vẫn tự tính lại.
+- `.github/workflows/ci.yml`: typecheck, test, build; migration lên/xuống/lên trên PostgreSQL thật; khởi động API thật và gọi health. **Chưa được chạy trên GitHub khi viết.**

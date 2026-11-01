@@ -16,7 +16,7 @@ export class PublishingProcessor extends WorkerHost {
     super();
   }
 
-  async process(): Promise<void> {
+  override async process(): Promise<void> {
     const { recovered, results } = await this.publishing.runDue();
     if (recovered > 0 || results.length > 0) {
       this.logger.log(`runDue: dọn ${recovered} việc treo, xử lý ${results.length} việc`);
