@@ -42,3 +42,45 @@ export function normalizeHandle(raw: string): string | null {
   const handle = raw.trim().replace(/^@/, '').toLowerCase();
   return /^[a-z0-9._]{1,30}$/.test(handle) ? handle : null;
 }
+
+const THREADS_HOSTS = new Set(['threads.net', 'www.threads.net', 'threads.com', 'www.threads.com']);
+
+export interface ParsedThreadsPermalink {
+  handle: string;
+  code: string;
+  /** Link chuẩn hóa: bỏ tham số truy vấn và đoạn #. */
+  url: string;
+}
+
+/** Đọc link bài Threads dạng https://www.threads.net/@ten/post/MÃ. Trả null nếu không đúng dạng. */
+export function parseThreadsPermalink(raw: string): ParsedThreadsPermalink | null {
+  let url: URL;
+  try {
+    url = new URL(raw.trim());
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:' || !THREADS_HOSTS.has(url.hostname.toLowerCase()) || url.username || url.password) {
+    return null;
+  }
+  const match = /^\/@([A-Za-z0-9._]{1,30})\/post\/([A-Za-z0-9_-]{5,40})\/?$/.exec(url.pathname);
+  if (!match) {
+    return null;
+  }
+  const handle = match[1].toLowerCase();
+  return { handle, code: match[2], url: `https://${url.hostname.toLowerCase()}/@${handle}/post/${match[2]}` };
+}
+
+/** Ngày giờ người dùng khai khi đánh dấu đã đăng thủ công: không ở tương lai (cho lệch đồng hồ 5 phút). */
+export function validateManualPublishedAt(at: Date, notBefore: Date, now: Date): ScheduleTimeCheck {
+  if (Number.isNaN(at.getTime())) {
+    return { ok: false, reason: 'Thời điểm đăng không hợp lệ.' };
+  }
+  if (at.getTime() > now.getTime() + 5 * 60_000) {
+    return { ok: false, reason: 'Thời điểm đã đăng không được ở tương lai.' };
+  }
+  if (at.getTime() < notBefore.getTime()) {
+    return { ok: false, reason: 'Thời điểm đã đăng không được sớm hơn lúc bài được lên lịch.' };
+  }
+  return { ok: true };
+}

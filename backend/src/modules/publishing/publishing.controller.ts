@@ -4,7 +4,7 @@ import { DevOnlyGuard } from '../../common/guards/dev-only.guard';
 import { CurrentUser, RequirePermission } from '../auth/decorators';
 import { OrgAccessGuard } from '../organizations/org-access.guard';
 import { Permission } from '../organizations/roles';
-import { CreateSocialAccountDto, RetryPublishDto, SchedulePostDto } from './dto/publishing.dto';
+import { CreateSocialAccountDto, MarkPublishedDto, RetryPublishDto, SchedulePostDto } from './dto/publishing.dto';
 import { PublishingService } from './publishing.service';
 
 type Actor = { id: string };
@@ -92,6 +92,19 @@ export class PublishingController {
     @Body() dto: RetryPublishDto,
   ) {
     return this.publishing.retry(orgId, user.id, postId, dto);
+  }
+
+  /** Bài đăng thất bại/không rõ kết quả nhưng thực tế đã có trên Threads: ghi nhận đã đăng (người dùng đối soát). */
+  @RequirePermission(Permission.PublishManage)
+  @HttpCode(200)
+  @Post('content/posts/:postId/mark-published')
+  markPublished(
+    @Param('orgId') orgId: string,
+    @CurrentUser() user: Actor,
+    @Param('postId', new ParseUUIDPipe()) postId: string,
+    @Body() dto: MarkPublishedDto,
+  ) {
+    return this.publishing.markPublishedManually(orgId, user.id, postId, dto);
   }
 
   /** Chạy ngay các việc đã đến giờ của tổ chức này (chỉ môi trường dev; production dùng worker định kỳ). */

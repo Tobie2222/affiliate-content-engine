@@ -147,6 +147,8 @@ export interface PublishActions {
   canRetry: boolean;
   /** Lần đăng trước không rõ kết quả: phải xác nhận đã kiểm tra trên Threads trước khi thử lại. */
   retryNeedsConfirm: boolean;
+  /** Bài thực ra đã có trên Threads: ghi nhận đã đăng (cùng quyền với lên lịch). */
+  canMarkPublished: boolean;
 }
 
 export function publishActions(status: PostStatus, jobs: PublishJob[], role: Role): PublishActions {
@@ -157,7 +159,30 @@ export function publishActions(status: PostStatus, jobs: PublishJob[], role: Rol
     canUnschedule: allowed && status === 'SCHEDULED',
     canRetry: allowed && status === 'FAILED' && lastFailed !== null,
     retryNeedsConfirm: lastFailed !== null && lastFailed.retrySafe !== true,
+    canMarkPublished: allowed && status === 'FAILED' && lastFailed !== null,
   };
+}
+
+/**
+ * Kiểm tra link bài Threads người dùng dán vào, khớp quy tắc của máy chủ (https, đúng tên miền Threads,
+ * dạng /@tên/post/mã, đúng tài khoản đã chọn để đăng). Trả lời lỗi bằng tiếng Việt hoặc null nếu hợp lệ.
+ */
+export function validatePermalinkInput(raw: string, handle: string | null): string | null {
+  let url: URL;
+  try {
+    url = new URL(raw.trim());
+  } catch {
+    return 'Dán link bài trên Threads, ví dụ https://www.threads.net/@tên/post/mã.';
+  }
+  const hosts = ['threads.net', 'www.threads.net', 'threads.com', 'www.threads.com'];
+  const match = /^\/@([A-Za-z0-9._]{1,30})\/post\/([A-Za-z0-9_-]{5,40})\/?$/.exec(url.pathname);
+  if (url.protocol !== 'https:' || !hosts.includes(url.hostname.toLowerCase()) || url.username || url.password || !match) {
+    return 'Link không đúng dạng bài Threads (https://www.threads.net/@tên/post/mã).';
+  }
+  if (handle && match[1].toLowerCase() !== handle.toLowerCase()) {
+    return `Link thuộc @${match[1].toLowerCase()}, không phải @${handle.toLowerCase()} đã chọn để đăng.`;
+  }
+  return null;
 }
 
 /** Giải thích lỗi đăng bằng lời thường, nói rõ có thể thử lại an toàn hay không. */

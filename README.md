@@ -238,3 +238,13 @@ Luồng: bài `APPROVED` → **lên lịch** (`SCHEDULED`) → worker đăng →
 - `docs/OPERATIONS.md`: biến môi trường, tiến trình nền, xử lý sự cố đăng bài, khóa API, sao lưu, giới hạn hiện tại.
 - Quét giấy phép media tự động mỗi 6 giờ cho mọi tổ chức (BullMQ). Chỉ cập nhật bản lưu cho danh sách; QA và đăng bài vẫn tự tính lại.
 - `.github/workflows/ci.yml`: typecheck, test, build; migration lên/xuống/lên trên PostgreSQL thật; khởi động API thật và gọi health. **Chưa được chạy trên GitHub khi viết.**
+
+## Phase 7b: ghi nhận bài đã đăng thủ công
+
+Khi đăng thất bại hoặc không rõ kết quả nhưng bài thực tế đã có trên Threads, người có quyền đăng bài (OWNER, ADMIN, CONTENT_EDITOR) dùng
+`POST /api/v1/organizations/:orgId/content/posts/:postId/mark-published` (hoặc mục "Bài thực ra đã có trên Threads" ở trang bài viết):
+
+- Chỉ áp dụng cho bài FAILED; phải xác nhận `confirmPublishedOnThreads: true`.
+- Link phải là bài Threads (https, threads.net/threads.com, dạng `/@tên/post/mã`) và đúng tài khoản đã chọn để đăng.
+- Bài chuyển FAILED -> PUBLISHED (không đăng lại được), có bản ghi `published_posts` với `external_post_id = manual:<mã>`, ghi nhật ký `publish.marked_manually`.
+- Thời điểm đã đăng không ở tương lai và không sớm hơn lúc bài được lên lịch (ảnh hưởng quy tắc gán đơn hàng cho bài ở trang Phân tích).

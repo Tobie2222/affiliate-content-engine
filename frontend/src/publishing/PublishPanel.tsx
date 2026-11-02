@@ -12,6 +12,7 @@ import {
   formatVN,
   localInputToIso,
   publishActions,
+  validatePermalinkInput,
   validateScheduleInput,
   type PostPublishing,
   type SocialAccount,
@@ -27,6 +28,7 @@ export function PublishPanel({
   onSchedule,
   onUnschedule,
   onRetry,
+  onMarkPublished,
 }: {
   post: ApiPost;
   role: Role;
@@ -36,6 +38,7 @@ export function PublishPanel({
   onSchedule(accountId: string, scheduledForIso: string): Promise<boolean>;
   onUnschedule(): Promise<boolean>;
   onRetry(confirmNotPublished: boolean): Promise<boolean>;
+  onMarkPublished(permalink: string): Promise<boolean>;
 }) {
   const jobs = info?.jobs ?? [];
   const actions = publishActions(post.status, jobs, role);
@@ -77,6 +80,8 @@ export function PublishPanel({
           needsConfirm={actions.retryNeedsConfirm}
           busy={busy}
           onRetry={onRetry}
+          markHandle={actions.canMarkPublished ? (latestAccount?.handle ?? null) : undefined}
+          onMarkPublished={onMarkPublished}
         />
       )}
 
@@ -190,12 +195,17 @@ function FailedResult({
   needsConfirm,
   busy,
   onRetry,
+  markHandle,
+  onMarkPublished,
 }: {
   text: string;
   canRetry: boolean;
   needsConfirm: boolean;
   busy: boolean;
   onRetry(confirmNotPublished: boolean): Promise<boolean>;
+  /** undefined = không có quyền ghi nhận; null = có quyền nhưng không rõ tài khoản. */
+  markHandle: string | null | undefined;
+  onMarkPublished(permalink: string): Promise<boolean>;
 }) {
   const [confirmed, setConfirmed] = useState(false);
   return (
@@ -220,6 +230,52 @@ function FailedResult({
           <p className="muted small">Hệ thống kiểm tra lại link và giấy phép trước khi đăng lại.</p>
         </div>
       )}
+      {markHandle !== undefined && <MarkPublishedForm handle={markHandle} busy={busy} onMarkPublished={onMarkPublished} />}
     </div>
+  );
+}
+
+/** Dành cho trường hợp hệ thống báo lỗi nhưng bài thực tế đã lên Threads: ghi nhận để không đăng trùng. */
+function MarkPublishedForm({
+  handle,
+  busy,
+  onMarkPublished,
+}: {
+  handle: string | null;
+  busy: boolean;
+  onMarkPublished(permalink: string): Promise<boolean>;
+}) {
+  const [permalink, setPermalink] = useState('');
+  const [confirmed, setConfirmed] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(e: FormEvent) {
+    e.preventDefault();
+    const problem = validatePermalinkInput(permalink, handle);
+    setError(problem);
+    if (!problem) {
+      await onMarkPublished(permalink.trim());
+    }
+  }
+
+  return (
+    <details className="small">
+      <summary>Bài thực ra đã có trên Threads</summary>
+      <form className="form" onSubmit={(e) => void submit(e)}>
+        <label>
+          Link bài trên Threads
+          <input type="url" value={permalink} placeholder="https://www.threads.net/@tên/post/mã" onChange={(e) => setPermalink(e.target.value)} />
+        </label>
+        <label className="radio">
+          <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
+          Tôi đã mở Threads và thấy bài này đang hiển thị
+        </label>
+        {error && <p className="field-error" role="alert">{error}</p>}
+        <button type="submit" className="btn" disabled={busy || !confirmed || permalink.trim() === ''}>
+          Ghi nhận đã đăng
+        </button>
+        <p className="muted small">Bài sẽ chuyển sang "Đã đăng" và không thể đăng lại, tránh đăng trùng.</p>
+      </form>
+    </details>
   );
 }

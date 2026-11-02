@@ -43,3 +43,19 @@ export class RetryPublishDto {
   @IsBoolean()
   confirmNotPublished?: boolean;
 }
+
+export class MarkPublishedDto {
+  @ApiProperty({ example: 'https://www.threads.net/@ten.tai.khoan/post/AbCdEfGh1', description: 'Link bài đã đăng trên Threads.' })
+  @IsString()
+  @MaxLength(500)
+  permalink: string;
+
+  @ApiPropertyOptional({ description: 'Thời điểm bài lên Threads (ISO 8601). Bỏ trống = bây giờ.' })
+  @IsOptional()
+  @IsDateString()
+  publishedAt?: string;
+
+  @ApiProperty({ description: 'Bắt buộc true: bạn đã mở Threads và thấy bài này đang hiển thị.' })
+  @IsBoolean()
+  confirmPublishedOnThreads: boolean;
+}

@@ -33,6 +33,8 @@ export interface TransitionContext {
   };
   /** Chỉ dùng cho FAILED -> SCHEDULED: đã đối soát, chắc chắn bài chưa được đăng. */
   retrySafe?: boolean;
+  /** Chỉ dùng cho FAILED -> PUBLISHED: người dùng xác nhận đã tự kiểm tra và bài ĐÃ có trên Threads. */
+  manuallyConfirmedPublished?: boolean;
   /** Bắt buộc khi chuyển sang BLOCKED. */
   reason?: string;
 }
@@ -66,6 +68,7 @@ const S = ContentStatus;
  * - SCHEDULED -> APPROVED: hủy lịch đăng khi lần duyệt vẫn còn hiệu lực.
  * - BLOCKED -> DRAFT: sau khi khắc phục phải đi lại quy trình duyệt.
  * - PUBLISHED và REJECTED là trạng thái cuối; bài đã đăng không bao giờ quay về DRAFT.
+ * - FAILED -> PUBLISHED: chỉ khi người dùng xác nhận đã kiểm tra trực tiếp trên Threads và bài đã có (đối soát thủ công).
  * - PUBLISHING không thể bị BLOCKED: bài đang gửi đi phải kết thúc bằng PUBLISHED hoặc FAILED.
  */
 const ALLOWED_TRANSITIONS: Readonly<Record<ContentStatus, ReadonlyArray<ContentStatus>>> = {
@@ -78,7 +81,7 @@ const ALLOWED_TRANSITIONS: Readonly<Record<ContentStatus, ReadonlyArray<ContentS
   [S.ChangesRequested]: [S.Draft, S.Blocked],
   [S.Rejected]: [],
   [S.Blocked]: [S.Draft],
-  [S.Failed]: [S.Scheduled, S.Blocked],
+  [S.Failed]: [S.Scheduled, S.Published, S.Blocked],
 };
 
 function fail(code: TransitionFailureCode, reason: string): TransitionResult {
@@ -169,6 +172,12 @@ export class ContentStateMachine {
       case S.Publishing:
         guards.push(versionGuard, runtimeChecksGuard);
         break;
+      case S.Published:
+        // PUBLISHING -> PUBLISHED do worker ghi sau khi nhà cung cấp trả kết quả; chỉ FAILED -> PUBLISHED cần xác nhận.
+        if (from === S.Failed) {
+          guards.push(ContentStateMachine.manualPublishGuard);
+        }
+        break;
       case S.Blocked:
         guards.push(ContentStateMachine.reasonGuard);
         break;
@@ -203,6 +212,13 @@ export class ContentStateMachine {
   private static retrySafeGuard(ctx: TransitionContext): TransitionResult | null {
     if (ctx.retrySafe !== true) {
       return fail('GUARD_FAILED', 'Cần đối soát kết quả đăng trước khi thử lại.');
+    }
+    return null;
+  }
+
+  private static manualPublishGuard(ctx: TransitionContext): TransitionResult | null {
+    if (ctx.manuallyConfirmedPublished !== true) {
+      return fail('GUARD_FAILED', 'Cần xác nhận đã kiểm tra trên Threads và bài đã được đăng.');
     }
     return null;
   }

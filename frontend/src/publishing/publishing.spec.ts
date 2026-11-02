@@ -8,6 +8,7 @@ import {
   localInputToIso,
   publishActions,
   toLocalInput,
+  validatePermalinkInput,
   validateScheduleInput,
   type PublishJob,
   type SocialAccount,
@@ -118,5 +119,26 @@ describe('hiển thị', () => {
     ];
     expect(accountLabel(accounts[0])).toBe('@a (Shop) - giả lập');
     expect(activeAccounts(accounts).map((a) => a.id)).toEqual(['1']);
+  });
+});
+
+describe('ghi nhận đã đăng thủ công', () => {
+  it('chỉ hiện cho bài FAILED, người có quyền đăng', () => {
+    expect(publishActions('FAILED', [job()], 'CONTENT_EDITOR').canMarkPublished).toBe(true);
+    expect(publishActions('FAILED', [job()], 'REVIEWER').canMarkPublished).toBe(false);
+    expect(publishActions('APPROVED', [job()], 'OWNER').canMarkPublished).toBe(false);
+    expect(publishActions('FAILED', [], 'OWNER').canMarkPublished).toBe(false);
+  });
+
+  it('kiểm tra link Threads giống máy chủ', () => {
+    const ok = 'https://www.threads.net/@shop.demo/post/AbCdEfGh1?xmt=1';
+    expect(validatePermalinkInput(ok, 'shop.demo')).toBeNull();
+    expect(validatePermalinkInput('https://www.threads.com/@Shop.Demo/post/AbCdEfGh1', 'shop.demo')).toBeNull();
+    expect(validatePermalinkInput('không phải link', 'shop.demo')).not.toBeNull();
+    expect(validatePermalinkInput('http://www.threads.net/@shop.demo/post/AbCdEfGh1', 'shop.demo')).not.toBeNull();
+    expect(validatePermalinkInput('https://evil.example/@shop.demo/post/AbCdEfGh1', 'shop.demo')).not.toBeNull();
+    expect(validatePermalinkInput('https://www.threads.net.evil.example/@shop.demo/post/AbCdEfGh1', 'shop.demo')).not.toBeNull();
+    expect(validatePermalinkInput('https://www.threads.net/@shop.demo', 'shop.demo')).not.toBeNull();
+    expect(validatePermalinkInput(ok, 'nguoi.khac')).toContain('@shop.demo');
   });
 });

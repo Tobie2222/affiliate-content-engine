@@ -508,6 +508,77 @@ describe('thất bại và thử lại', () => {
   });
 });
 
+describe('PublishingService.markPublishedManually', () => {
+  const at = new Date(LATER.getTime() + 1000);
+  const LINK_OK = 'https://www.threads.net/@shop.demo/post/AbCdEfGh1?xmt=abc#x';
+  const confirm = { permalink: LINK_OK, confirmPublishedOnThreads: true };
+
+  async function failedUnknown(ctx: Ctx) {
+    await scheduled(ctx);
+    ctx.threads.failNext = new Error('socket hang up');
+    await ctx.service.runDue(at);
+    expect(postRow(ctx).status).toBe(ContentStatus.Failed);
+  }
+
+  it('bài thất bại không rõ kết quả nhưng đã có trên Threads: ghi nhận đã đăng, không thể đăng lại', async () => {
+    const ctx = setup();
+    await failedUnknown(ctx);
+    const out = await ctx.service.markPublishedManually(ORG_A, ACTOR, POST, { ...confirm, publishedAt: at.toISOString() }, at);
+    expect(out.post.status).toBe(ContentStatus.Published);
+    expect(ctx.published.rows).toHaveLength(1);
+    expect(ctx.published.rows[0]).toMatchObject({
+      contentPostId: POST,
+      externalPostId: 'manual:AbCdEfGh1',
+      permalink: 'https://www.threads.net/@shop.demo/post/AbCdEfGh1',
+      publishedAt: at,
+    });
+    expect(ctx.auditEntries.map((e) => e.action)).toContain('publish.marked_manually');
+    await expect(ctx.service.retry(ORG_A, ACTOR, POST, { confirmNotPublished: true }, at)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('bắt buộc xác nhận đã xem bài trên Threads', async () => {
+    const ctx = setup();
+    await failedUnknown(ctx);
+    await expect(
+      ctx.service.markPublishedManually(ORG_A, ACTOR, POST, { permalink: LINK_OK, confirmPublishedOnThreads: false }, at),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    expect(postRow(ctx).status).toBe(ContentStatus.Failed);
+    expect(ctx.published.rows).toHaveLength(0);
+  });
+
+  it('từ chối link không phải Threads, sai tài khoản, hoặc thời điểm không hợp lệ', async () => {
+    const ctx = setup();
+    await failedUnknown(ctx);
+    for (const permalink of [
+      'https://evil.example/@shop.demo/post/AbCdEfGh1',
+      'http://www.threads.net/@shop.demo/post/AbCdEfGh1',
+      'https://www.threads.net/@shop.demo',
+      'https://www.threads.net.evil.example/@shop.demo/post/AbCdEfGh1',
+      'không phải link',
+    ]) {
+      await expect(ctx.service.markPublishedManually(ORG_A, ACTOR, POST, { ...confirm, permalink }, at)).rejects.toBeInstanceOf(BadRequestException);
+    }
+    await expect(
+      ctx.service.markPublishedManually(ORG_A, ACTOR, POST, { ...confirm, permalink: 'https://www.threads.net/@nguoi.khac/post/AbCdEfGh1' }, at),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      ctx.service.markPublishedManually(ORG_A, ACTOR, POST, { ...confirm, publishedAt: new Date(at.getTime() + 3600_000).toISOString() }, at),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    await expect(
+      ctx.service.markPublishedManually(ORG_A, ACTOR, POST, { ...confirm, publishedAt: new Date(T0.getTime() - 3600_000).toISOString() }, at),
+    ).rejects.toBeInstanceOf(BadRequestException);
+    expect(postRow(ctx).status).toBe(ContentStatus.Failed);
+    expect(ctx.published.rows).toHaveLength(0);
+  });
+
+  it('chỉ áp dụng cho bài FAILED và đúng tổ chức', async () => {
+    const ctx = setup();
+    await scheduled(ctx);
+    await expect(ctx.service.markPublishedManually(ORG_A, ACTOR, POST, confirm, at)).rejects.toBeInstanceOf(ConflictException);
+    await expect(ctx.service.markPublishedManually(ORG_B, ACTOR, POST, confirm, at)).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
 describe('PublishingService.recoverStale', () => {
   it('việc PUBLISHING quá lâu -> FAILED/UNKNOWN, không tự thử lại; việc mới thì giữ nguyên', async () => {
     const ctx = setup();

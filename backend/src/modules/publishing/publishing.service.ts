@@ -24,7 +24,7 @@ import {
 import { ContentPost } from '../content/entities/content-post.entity';
 import { PostApproval } from '../content/entities/post-approval.entity';
 import { MediaService } from '../media/media.service';
-import { CreateSocialAccountDto, RetryPublishDto, SchedulePostDto } from './dto/publishing.dto';
+import { CreateSocialAccountDto, MarkPublishedDto, RetryPublishDto, SchedulePostDto } from './dto/publishing.dto';
 import { PublishFailureKind, PublishJob } from './entities/publish-job.entity';
 import { PublishedPost } from './entities/published-post.entity';
 import { SocialAccount } from './entities/social-account.entity';
@@ -32,8 +32,10 @@ import {
   buildIdempotencyKey,
   isStalePublishing,
   normalizeHandle,
+  parseThreadsPermalink,
   sanitizeError,
   STALE_PUBLISHING_MINUTES,
+  validateManualPublishedAt,
   validateScheduleTime,
 } from './publish-rules';
 import { THREADS_PROVIDER, ThreadsProvider, ThreadsPublishError } from './providers/threads-provider.types';
@@ -288,6 +290,85 @@ export class PublishingService {
       metadata: { jobId: last.id, previousFailureKind: last.failureKind, confirmedNotPublished: dto.confirmNotPublished === true },
     });
     return { post: await this.requirePost(organizationId, postId), job };
+  }
+
+  /**
+   * Ghi nhận bài ĐÃ có trên Threads dù hệ thống báo thất bại hoặc không rõ kết quả.
+   * Người dùng phải xác nhận đã mở Threads và thấy bài; link phải đúng tài khoản đã chọn để đăng.
+   * Bài chuyển FAILED -> PUBLISHED nên không thể đăng lại (tránh đăng trùng) và vào được báo cáo phân tích.
+   */
+  async markPublishedManually(
+    organizationId: string,
+    actorId: string,
+    postId: string,
+    dto: MarkPublishedDto,
+    now = new Date(),
+  ): Promise<{ post: ContentPost; published: PublishedPost }> {
+    const post = await this.requirePost(organizationId, postId);
+    if (post.status !== ContentStatus.Failed) {
+      throw new ConflictException(`Chỉ ghi nhận thủ công được bài đăng thất bại (hiện là ${post.status}).`);
+    }
+    const [last] = await this.jobs.find({ where: { organizationId, contentPostId: post.id, status: 'FAILED' }, order: { createdAt: 'DESC' } });
+    if (!last || last.contentVersion !== post.contentVersion) {
+      throw new ConflictException('Không tìm thấy lần đăng thất bại tương ứng với phiên bản hiện tại của bài.');
+    }
+    const account = await this.requireAccount(organizationId, last.socialAccountId);
+    const link = parseThreadsPermalink(dto.permalink);
+    if (!link) {
+      throw new BadRequestException('Link không đúng dạng bài Threads (https://www.threads.net/@tên/post/mã).');
+    }
+    if (link.handle !== account.handle) {
+      throw new BadRequestException(`Link thuộc tài khoản @${link.handle}, không phải @${account.handle} đã chọn để đăng.`);
+    }
+    const publishedAt = dto.publishedAt ? new Date(dto.publishedAt) : now;
+    const timeCheck = validateManualPublishedAt(publishedAt, last.createdAt, now);
+    if (!timeCheck.ok) {
+      throw new BadRequestException(timeCheck.reason);
+    }
+    this.assertTransition(ContentStatus.Failed, ContentStatus.Published, {
+      currentVersion: post.contentVersion,
+      manuallyConfirmedPublished: dto.confirmPublishedOnThreads === true,
+    });
+
+    let published: PublishedPost;
+    try {
+      published = await this.dataSource.transaction(async (manager) => {
+        const postResult = await manager.getRepository(ContentPost).update(
+          { id: post.id, organizationId, status: ContentStatus.Failed, contentVersion: post.contentVersion },
+          { status: ContentStatus.Published },
+        );
+        if (postResult.affected !== 1) {
+          throw new ConflictException('Bài vừa thay đổi. Hãy tải lại.');
+        }
+        const repo = manager.getRepository(PublishedPost);
+        return repo.save(
+          repo.create({
+            organizationId,
+            contentPostId: post.id,
+            socialAccountId: account.id,
+            publishJobId: last.id,
+            externalPostId: `manual:${link.code}`,
+            permalink: link.url,
+            publishedAt,
+          }),
+        );
+      });
+    } catch (error) {
+      if (isUniqueViolation(error)) {
+        throw new ConflictException('Bài này hoặc link này đã được ghi nhận trước đó.');
+      }
+      throw error;
+    }
+    await this.audit.record({
+      organizationId,
+      actorId,
+      action: 'publish.marked_manually',
+      entityType: 'content_post',
+      entityId: post.id,
+      metadata: { jobId: last.id, previousFailureKind: last.failureKind, permalink: link.url },
+    });
+    await this.safeEmit(organizationId, AgentEventType.TaskCompleted, 'Đã ghi nhận bài đăng (xác nhận thủ công)');
+    return { post: await this.requirePost(organizationId, postId), published };
   }
 
   // ---------- Worker ----------

@@ -30,6 +30,7 @@ const ALLOWED: Array<[ContentStatus, ContentStatus]> = [
   [S.ChangesRequested, S.Blocked],
   [S.Blocked, S.Draft],
   [S.Failed, S.Scheduled],
+  [S.Failed, S.Published],
   [S.Failed, S.Blocked],
 ];
 
@@ -45,6 +46,7 @@ function goodContext(overrides: Partial<TransitionContext> = {}): TransitionCont
     separationOfDuties: true,
     checks: { socialAccountActive: true, affiliateLink: 'OK', mediaRights: 'OK' },
     retrySafe: true,
+    manuallyConfirmedPublished: true,
     reason: 'Giấy phép hết hạn',
     ...overrides,
   };
@@ -194,6 +196,16 @@ describe('ContentStateMachine - lên lịch và đăng', () => {
     expect(
       ContentStateMachine.evaluate(S.Failed, S.Scheduled, goodContext({ retrySafe: undefined })),
     ).toMatchObject({ ok: false, code: 'GUARD_FAILED' });
+  });
+
+  it('FAILED -> PUBLISHED chỉ khi người dùng xác nhận đã kiểm tra trên Threads', () => {
+    expect(
+      ContentStateMachine.evaluate(S.Failed, S.Published, goodContext({ manuallyConfirmedPublished: false })),
+    ).toMatchObject({ ok: false, code: 'GUARD_FAILED' });
+    expect(
+      ContentStateMachine.evaluate(S.Failed, S.Published, goodContext({ manuallyConfirmedPublished: undefined })),
+    ).toMatchObject({ ok: false, code: 'GUARD_FAILED' });
+    expect(ContentStateMachine.evaluate(S.Failed, S.Published, goodContext())).toEqual({ ok: true });
   });
 
   it('hủy lịch (SCHEDULED -> APPROVED) chỉ khi lần duyệt còn hiệu lực', () => {
