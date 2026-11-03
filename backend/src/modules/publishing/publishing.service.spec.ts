@@ -2,7 +2,6 @@ import {
   BadRequestException,
   ConflictException,
   NotFoundException,
-  ServiceUnavailableException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -18,6 +17,7 @@ import { MediaService } from '../media/media.service';
 import { PublishJob } from './entities/publish-job.entity';
 import { PublishedPost } from './entities/published-post.entity';
 import { SocialAccount } from './entities/social-account.entity';
+import { SocialCredentialsService } from './social-credentials.service';
 import { MockThreadsProvider } from './providers/mock-threads.provider';
 import { ThreadsPublishError } from './providers/threads-provider.types';
 import { PublishingService } from './publishing.service';
@@ -97,10 +97,16 @@ function fakeRepo(uniqueKeys: string[] = []) {
   };
 }
 
-function setup(options: { env?: Record<string, string>; media?: boolean } = {}) {
+function setup(options: { env?: Record<string, string>; media?: boolean; live?: boolean } = {}) {
   const accounts = fakeRepo(['handle']);
   const jobs = fakeRepo();
   const published = fakeRepo();
+  // Giá trị mặc định của cột trong DB (migration ThreadsLive): bản giả phải giống để không che lỗi.
+  const createPublished = published.create;
+  published.create = (x: Row) => ({
+    commentStatus: 'NONE', commentExternalId: null, commentFailureKind: null, commentError: null,
+    commentAttempts: 0, commentStartedAt: null, commentPostedAt: null, ...createPublished(x),
+  });
   const posts = fakeRepo();
   const approvals = fakeRepo();
   const byClass = new Map<unknown, unknown>([
@@ -147,6 +153,43 @@ function setup(options: { env?: Record<string, string>; media?: boolean } = {}) 
   const auditEntries: Array<{ action: string }> = [];
   const audit = { record: async (e: { action: string }) => void auditEntries.push(e) };
   const threads = new MockThreadsProvider();
+  const tokens = new Map<string, string>();
+  const live = {
+    profile: { id: 'th-1789', username: 'shop.demo' } as { id: string; username: string },
+    profileError: null as Error | null,
+    tokenReadError: false,
+  };
+  if (options.live) {
+    // Nhà cung cấp "thật" giả lập: cùng hành vi mock nhưng khai mode=live, xác thực token qua fetchProfile, và từ chối khi thiếu token.
+    const publishText = threads.publishText.bind(threads);
+    const publishReply = threads.publishReply.bind(threads);
+    const needToken = <T extends { accessToken: string | null }>(r: T) => {
+      if (!r.accessToken) {
+        throw new ThreadsPublishError('NOT_SENT', 'Tài khoản chưa có token Threads.', 'AUTH');
+      }
+    };
+    threads.publishText = async (r) => (needToken(r), publishText(r));
+    threads.publishReply = async (r) => (needToken(r), publishReply(r));
+    Object.assign(threads, {
+      mode: 'live',
+      fetchProfile: async (token: string) => {
+        if (live.profileError) {
+          throw live.profileError;
+        }
+        return token.startsWith('GOOD') ? live.profile : Promise.reject(new ThreadsPublishError('NOT_SENT', 'Invalid OAuth access token.', 'AUTH'));
+      },
+    });
+  }
+  const credentials = {
+    store: async (_manager: unknown, _org: string, accountId: string, token: string) => void tokens.set(accountId, token),
+    tokenFor: async (_org: string, accountId: string) => {
+      if (live.tokenReadError) {
+        throw new Error('decrypt failed');
+      }
+      return tokens.get(accountId) ?? null;
+    },
+    remove: async (_org: string, accountId: string) => void tokens.delete(accountId),
+  };
   const env: Record<string, string> = { THREADS_PROVIDER: 'mock', NODE_ENV: 'development', ...options.env };
   const config = { get: (k: string) => env[k] };
 
@@ -163,8 +206,9 @@ function setup(options: { env?: Record<string, string>; media?: boolean } = {}) 
     office as unknown as AgentOfficeService,
     audit as unknown as AuditLogsService,
     config as unknown as ConfigService,
+    credentials as unknown as SocialCredentialsService,
   );
-  return { service, accounts, jobs, published, posts, approvals, threads, state, emitted, auditEntries, env };
+  return { service, tokens, live, accounts, jobs, published, posts, approvals, threads, state, emitted, auditEntries, env };
 }
 
 type Ctx = ReturnType<typeof setup>;
@@ -208,12 +252,119 @@ describe('tài khoản Threads', () => {
     await expect(account(ctx)).rejects.toBeInstanceOf(ConflictException);
   });
 
-  it('THREADS_PROVIDER khác mock: từ chối kết nối giả vờ', async () => {
-    const ctx = setup({ env: { THREADS_PROVIDER: 'official' } });
-    await expect(account(ctx)).rejects.toBeInstanceOf(ServiceUnavailableException);
+  it('chế độ giả lập không nhận token', async () => {
+    const ctx = setup();
+    await expect(ctx.service.createAccount(ORG_A, ACTOR, { handle: 'shop.demo', displayName: 'x', accessToken: 'GOOD-token-1234567890abcdef' })).rejects.toBeInstanceOf(BadRequestException);
     expect(ctx.accounts.rows.length).toBe(0);
   });
+});
 
+describe('kết nối Threads thật', () => {
+  const TOKEN = 'GOOD-token-1234567890abcdef';
+  const dto = { handle: '@Shop.Demo', displayName: 'Shop demo', accessToken: TOKEN };
+
+  it('xác thực token, lưu tài khoản OFFICIAL và token (không nằm trong dữ liệu tài khoản trả ra)', async () => {
+    const ctx = setup({ live: true });
+    const acc = await ctx.service.createAccount(ORG_A, ACTOR, dto);
+    expect(acc).toMatchObject({ handle: 'shop.demo', mode: 'OFFICIAL', status: 'ACTIVE', externalAccountId: 'th-1789' });
+    expect(JSON.stringify(acc)).not.toContain(TOKEN);
+    expect(ctx.tokens.get(acc.id)).toBe(TOKEN);
+    expect(JSON.stringify(ctx.auditEntries)).not.toContain(TOKEN);
+    expect(ctx.service.providerInfo()).toEqual({ mode: 'live' });
+  });
+
+  it('từ chối khi thiếu token, token có ký tự lạ, token sai, hoặc token thuộc tài khoản khác', async () => {
+    const ctx = setup({ live: true });
+    await expect(ctx.service.createAccount(ORG_A, ACTOR, { ...dto, accessToken: undefined })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(ctx.service.createAccount(ORG_A, ACTOR, { ...dto, accessToken: 'GOOD token\nxyz-1234567890' })).rejects.toBeInstanceOf(BadRequestException);
+    await expect(ctx.service.createAccount(ORG_A, ACTOR, { ...dto, accessToken: 'BAD-token-1234567890abcdef' })).rejects.toBeInstanceOf(BadRequestException);
+    ctx.live.profile = { id: 'th-9', username: 'nguoi.khac' };
+    await expect(ctx.service.createAccount(ORG_A, ACTOR, dto)).rejects.toBeInstanceOf(BadRequestException);
+    expect(ctx.accounts.rows.length).toBe(0);
+    expect(ctx.tokens.size).toBe(0);
+  });
+
+  it('ngắt kết nối xóa token; kết nối lại cập nhật token thay vì báo trùng', async () => {
+    const ctx = setup({ live: true });
+    const acc = await ctx.service.createAccount(ORG_A, ACTOR, dto);
+    await expect(ctx.service.createAccount(ORG_A, ACTOR, dto)).rejects.toBeInstanceOf(ConflictException);
+    await ctx.service.disconnectAccount(ORG_A, ACTOR, acc.id);
+    expect(ctx.tokens.size).toBe(0);
+    const again = await ctx.service.createAccount(ORG_A, ACTOR, { ...dto, accessToken: 'GOOD-token-NEW-1234567890' });
+    expect(again.id).toBe(acc.id);
+    expect(ctx.accounts.rows).toHaveLength(1);
+    expect(ctx.accounts.rows[0]).toMatchObject({ status: 'ACTIVE', mode: 'OFFICIAL' });
+    expect(ctx.tokens.get(acc.id)).toBe('GOOD-token-NEW-1234567890');
+    expect(ctx.auditEntries.map((e) => e.action)).toContain('social_account.reconnected');
+  });
+
+  it('tài khoản giả lập không đăng được khi hệ thống ở chế độ thật (và ngược lại)', async () => {
+    const mockCtx = setup();
+    approvedPost(mockCtx);
+    const mockAcc = await account(mockCtx);
+    mockCtx.accounts.rows[0].mode = 'OFFICIAL';
+    await expect(
+      mockCtx.service.schedule(ORG_A, ACTOR, POST, { socialAccountId: mockAcc.id, scheduledFor: LATER.toISOString(), expectedVersion: 1 }, T0),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+
+    const liveCtx = setup({ live: true });
+    approvedPost(liveCtx);
+    const liveAcc = await liveCtx.service.createAccount(ORG_A, ACTOR, dto);
+    liveCtx.accounts.rows[0].mode = 'MOCK';
+    await expect(
+      liveCtx.service.schedule(ORG_A, ACTOR, POST, { socialAccountId: liveAcc.id, scheduledFor: LATER.toISOString(), expectedVersion: 1 }, T0),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+
+  it('đăng bằng tài khoản thật: gửi kèm token đã lưu cho bài chính và comment', async () => {
+    const ctx = setup({ live: true });
+    approvedPost(ctx);
+    const acc = await ctx.service.createAccount(ORG_A, ACTOR, dto);
+    const seen: Array<string | null> = [];
+    const publishText = ctx.threads.publishText.bind(ctx.threads);
+    const publishReply = ctx.threads.publishReply.bind(ctx.threads);
+    ctx.threads.publishText = async (r) => (seen.push(r.accessToken), publishText(r));
+    ctx.threads.publishReply = async (r) => (seen.push(r.accessToken), publishReply(r));
+    await ctx.service.schedule(ORG_A, ACTOR, POST, { socialAccountId: acc.id, scheduledFor: LATER.toISOString(), expectedVersion: 1 }, T0);
+    const run = await ctx.service.runDue(new Date(LATER.getTime() + 1000));
+    expect(run.results[0].outcome).toBe('PUBLISHED');
+    expect(seen).toEqual([TOKEN, TOKEN]);
+    expect(ctx.published.rows[0].commentStatus).toBe('POSTED');
+  });
+
+  it('token hết hạn khi đăng: việc thất bại an toàn (NOT_SENT) và tài khoản chuyển NEEDS_REAUTH', async () => {
+    const ctx = setup({ live: true });
+    approvedPost(ctx);
+    const acc = await ctx.service.createAccount(ORG_A, ACTOR, dto);
+    await ctx.service.schedule(ORG_A, ACTOR, POST, { socialAccountId: acc.id, scheduledFor: LATER.toISOString(), expectedVersion: 1 }, T0);
+    ctx.threads.failNext = new ThreadsPublishError('NOT_SENT', 'Token hết hạn.', 'AUTH');
+    const run = await ctx.service.runDue(new Date(LATER.getTime() + 1000));
+    expect(run.results[0].outcome).toBe('FAILED');
+    expect(jobRow(ctx)).toMatchObject({ status: 'FAILED', failureKind: 'NOT_SENT', retrySafe: true });
+    expect(ctx.accounts.rows[0].status).toBe('NEEDS_REAUTH');
+    await expect(ctx.service.retry(ORG_A, ACTOR, POST, {}, LATER)).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+
+  it('token đã lưu bị mất hoặc không giải mã được: không đăng gì, thất bại NOT_SENT', async () => {
+    for (const mode of ['missing', 'undecryptable'] as const) {
+      const ctx = setup({ live: true });
+      approvedPost(ctx);
+      const acc = await ctx.service.createAccount(ORG_A, ACTOR, dto);
+      await ctx.service.schedule(ORG_A, ACTOR, POST, { socialAccountId: acc.id, scheduledFor: LATER.toISOString(), expectedVersion: 1 }, T0);
+      if (mode === 'missing') {
+        ctx.tokens.clear();
+      } else {
+        ctx.live.tokenReadError = true;
+      }
+      const run = await ctx.service.runDue(new Date(LATER.getTime() + 1000));
+      expect(run.results[0].outcome).toBe('FAILED');
+      expect(ctx.threads.published.size).toBe(0);
+      expect(jobRow(ctx)).toMatchObject({ status: 'FAILED', failureKind: 'NOT_SENT', retrySafe: true });
+    }
+  });
+});
+
+describe('tài khoản Threads (tiếp)', () => {
   it('không ngắt kết nối khi còn bài chờ đăng', async () => {
     const ctx = setup();
     const { acc } = await scheduled(ctx);
@@ -366,7 +517,13 @@ describe('PublishingService.runDue', () => {
     expect(ctx.published.rows.length).toBe(1);
     expect(ctx.published.rows[0].externalPostId).toBe(jobRow(ctx).externalPostId);
     const sent = [...ctx.threads.published.values()][0];
-    expect(sent.text).toBe(composeText(BODY, DISCLOSURE, URL));
+    // Bài chính không chứa link; link nằm ở comment ngay dưới bài.
+    expect(sent.text).toBe(composeText(BODY, DISCLOSURE, null));
+    expect(sent.text).not.toContain(URL);
+    const reply = [...ctx.threads.replies.values()][0];
+    expect(reply.text).toBe(`Link sản phẩm: ${URL}`);
+    expect(reply.replyToExternalId).toBe(String(ctx.published.rows[0].externalPostId));
+    expect(ctx.published.rows[0]).toMatchObject({ commentStatus: 'POSTED' });
     expect(ctx.emitted.map((e) => e.type)).toContain('TASK_COMPLETED');
   });
 
@@ -576,6 +733,125 @@ describe('PublishingService.markPublishedManually', () => {
     await scheduled(ctx);
     await expect(ctx.service.markPublishedManually(ORG_A, ACTOR, POST, confirm, at)).rejects.toBeInstanceOf(ConflictException);
     await expect(ctx.service.markPublishedManually(ORG_B, ACTOR, POST, confirm, at)).rejects.toBeInstanceOf(NotFoundException);
+  });
+});
+
+describe('comment chứa link affiliate', () => {
+  const at = new Date(LATER.getTime() + 1000);
+
+  async function published(ctx: Ctx) {
+    await scheduled(ctx);
+    await ctx.service.runDue(at);
+    return ctx.published.rows[0];
+  }
+
+  it('đăng bài chính rồi comment; mọi thứ ghi nhận đúng', async () => {
+    const ctx = setup();
+    const row = await published(ctx);
+    expect(row).toMatchObject({ commentStatus: 'POSTED', commentAttempts: 1, commentFailureKind: null, commentError: null });
+    expect(String(row.commentExternalId)).toMatch(/^mockreply_/);
+    expect(ctx.auditEntries.map((e) => e.action)).toContain('publish.comment_posted');
+  });
+
+  it('comment lỗi KHÔNG làm bài đã đăng thất bại hay bị đăng lại; có thể thử lại an toàn', async () => {
+    const ctx = setup();
+    await scheduled(ctx);
+    ctx.threads.failReplyNext = new ThreadsPublishError('NOT_SENT', 'Vượt hạn mức.', 'RATE_LIMIT');
+    const run = await ctx.service.runDue(at);
+    expect(run.results[0].outcome).toBe('PUBLISHED');
+    expect(postRow(ctx).status).toBe(ContentStatus.Published);
+    expect(ctx.published.rows[0]).toMatchObject({ commentStatus: 'FAILED', commentFailureKind: 'NOT_SENT' });
+    expect(ctx.threads.published.size).toBe(1);
+
+    const info = await ctx.service.retryComment(ORG_A, ACTOR, POST, {});
+    expect(info.published).toMatchObject({ commentStatus: 'POSTED', commentAttempts: 2 });
+    expect(ctx.threads.published.size).toBe(1);
+    expect(ctx.threads.replies.size).toBe(1);
+    await expect(ctx.service.retryComment(ORG_A, ACTOR, POST, {})).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('comment không rõ kết quả: cần xác nhận mới thử lại; hoặc báo đã có để không đăng lại', async () => {
+    const ctx = setup();
+    await scheduled(ctx);
+    ctx.threads.failReplyNext = new Error('socket hang up');
+    await ctx.service.runDue(at);
+    expect(ctx.published.rows[0]).toMatchObject({ commentStatus: 'FAILED', commentFailureKind: 'UNKNOWN' });
+    await expect(ctx.service.retryComment(ORG_A, ACTOR, POST, {})).rejects.toBeInstanceOf(ConflictException);
+    await expect(ctx.service.retryComment(ORG_A, ACTOR, POST, { confirmNotPosted: true, alreadyPosted: true })).rejects.toBeInstanceOf(BadRequestException);
+    expect(ctx.threads.replies.size).toBe(0);
+
+    const done = await ctx.service.retryComment(ORG_A, ACTOR, POST, { alreadyPosted: true });
+    expect(done.published).toMatchObject({ commentStatus: 'POSTED', commentExternalId: 'manual' });
+    expect(ctx.threads.replies.size).toBe(0);
+    expect(ctx.auditEntries.map((e) => e.action)).toContain('publish.comment_marked_posted');
+  });
+
+  it('xác nhận comment chưa có thì đăng lại', async () => {
+    const ctx = setup();
+    await scheduled(ctx);
+    ctx.threads.failReplyNext = new Error('socket hang up');
+    await ctx.service.runDue(at);
+    const info = await ctx.service.retryComment(ORG_A, ACTOR, POST, { confirmNotPosted: true });
+    expect(info.published).toMatchObject({ commentStatus: 'POSTED' });
+    expect(ctx.threads.replies.size).toBe(1);
+  });
+
+  it('link bị thu hồi trước khi đăng comment: KHÔNG đăng link, ghi lỗi NOT_SENT', async () => {
+    const ctx = setup();
+    await scheduled(ctx);
+    ctx.threads.failReplyNext = new ThreadsPublishError('NOT_SENT', 'tạm lỗi');
+    await ctx.service.runDue(at);
+    ctx.state.link = { ok: false, reason: 'Link đã bị thu hồi.' };
+    await ctx.service.retryComment(ORG_A, ACTOR, POST, {}).catch(() => undefined);
+    expect(ctx.threads.replies.size).toBe(0);
+    expect(ctx.published.rows[0]).toMatchObject({ commentStatus: 'FAILED', commentFailureKind: 'NOT_SENT' });
+    expect(String(ctx.published.rows[0].commentError)).toContain('thu hồi');
+  });
+
+  it('comment PENDING bị bỏ sót (tiến trình dừng giữa chừng) được worker đăng bù, sau thời gian chờ', async () => {
+    const ctx = setup();
+    await scheduled(ctx);
+    ctx.threads.failReplyNext = new ThreadsPublishError('NOT_SENT', 'x');
+    await ctx.service.runDue(at);
+    Object.assign(ctx.published.rows[0], { commentStatus: 'PENDING', commentFailureKind: null, commentError: null });
+    const early = await ctx.service.runDue(new Date(at.getTime() + 5_000));
+    expect(early.commentsHandled).toBe(0);
+    const later = await ctx.service.runDue(new Date(at.getTime() + 60_000));
+    expect(later.commentsHandled).toBe(1);
+    expect(ctx.published.rows[0].commentStatus).toBe('POSTED');
+  });
+
+  it('comment POSTING quá lâu -> FAILED/UNKNOWN, không tự thử lại', async () => {
+    const ctx = setup();
+    await published(ctx);
+    const startedAt = new Date(at.getTime() + 1000);
+    Object.assign(ctx.published.rows[0], { commentStatus: 'POSTING', commentStartedAt: startedAt });
+    expect(await ctx.service.recoverStaleComments(new Date(startedAt.getTime() + 5 * 60_000))).toBe(0);
+    expect(await ctx.service.recoverStaleComments(new Date(startedAt.getTime() + 11 * 60_000))).toBe(1);
+    expect(ctx.published.rows[0]).toMatchObject({ commentStatus: 'FAILED', commentFailureKind: 'UNKNOWN' });
+  });
+
+  it('hai tiến trình cùng đăng comment: chỉ một bên gửi', async () => {
+    const ctx = setup();
+    await scheduled(ctx);
+    ctx.threads.failReplyNext = new ThreadsPublishError('NOT_SENT', 'x');
+    await ctx.service.runDue(at);
+    Object.assign(ctx.published.rows[0], { commentStatus: 'PENDING' });
+    const id = String(ctx.published.rows[0].id);
+    const out = await Promise.all([ctx.service.attemptComment(ORG_A, id, at), ctx.service.attemptComment(ORG_A, id, at)]);
+    expect([...out].sort()).toEqual(['POSTED', 'SKIPPED']);
+    expect(ctx.threads.replies.size).toBe(1);
+  });
+
+  it('bài ghi nhận thủ công không có comment tự động; không đọc được bài của tổ chức khác', async () => {
+    const ctx = setup();
+    await scheduled(ctx);
+    ctx.threads.failNext = new Error('socket hang up');
+    await ctx.service.runDue(at);
+    await ctx.service.markPublishedManually(ORG_A, ACTOR, POST, { permalink: 'https://www.threads.net/@shop.demo/post/AbCdEfGh1', confirmPublishedOnThreads: true }, at);
+    expect(ctx.published.rows[0].commentStatus ?? 'NONE').toBe('NONE');
+    expect((await ctx.service.runDue(new Date(at.getTime() + 120_000))).commentsHandled).toBe(0);
+    await expect(ctx.service.retryComment(ORG_B, ACTOR, POST, {})).rejects.toBeInstanceOf(NotFoundException);
   });
 });
 

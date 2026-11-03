@@ -238,6 +238,7 @@ export function PostDetailPage() {
               onRetry={(confirmNotPublished) =>
                 run(() => api(`${base}/retry-publish`, { method: 'POST', body: confirmNotPublished ? { confirmNotPublished: true } : {} }))
               }
+              onRetryComment={(options) => run(() => api(`${base}/retry-comment`, { method: 'POST', body: options }))}
               onMarkPublished={(permalink) =>
                 run(() => api(`${base}/mark-published`, { method: 'POST', body: { permalink, confirmPublishedOnThreads: true } }))
               }

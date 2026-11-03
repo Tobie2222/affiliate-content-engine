@@ -1,5 +1,11 @@
 import { Column, CreateDateColumn, Entity, PrimaryGeneratedColumn } from 'typeorm';
 
+/**
+ * Trạng thái comment chứa link affiliate: NONE (bài không có comment), PENDING (chờ đăng), POSTING (đang gửi),
+ * POSTED (đã đăng), FAILED (lỗi; xem comment_failure_kind). Độc lập với trạng thái của bài.
+ */
+export type CommentStatus = 'NONE' | 'PENDING' | 'POSTING' | 'POSTED' | 'FAILED';
+
 @Entity({ name: 'published_posts' })
 export class PublishedPost {
   @PrimaryGeneratedColumn('uuid')
@@ -25,6 +31,28 @@ export class PublishedPost {
 
   @Column({ name: 'published_at', type: 'timestamptz' })
   publishedAt: Date;
+
+  @Column({ name: 'comment_status', type: 'varchar', length: 10, default: 'NONE' })
+  commentStatus: CommentStatus;
+
+  @Column({ name: 'comment_external_id', type: 'varchar', length: 100, nullable: true })
+  commentExternalId: string | null;
+
+  /** NOT_SENT: chắc chắn chưa đăng comment. UNKNOWN: không rõ, cần người kiểm tra trước khi thử lại. */
+  @Column({ name: 'comment_failure_kind', type: 'varchar', length: 10, nullable: true })
+  commentFailureKind: 'NOT_SENT' | 'UNKNOWN' | null;
+
+  @Column({ name: 'comment_error', type: 'text', nullable: true })
+  commentError: string | null;
+
+  @Column({ name: 'comment_attempts', type: 'int', default: 0 })
+  commentAttempts: number;
+
+  @Column({ name: 'comment_started_at', type: 'timestamptz', nullable: true })
+  commentStartedAt: Date | null;
+
+  @Column({ name: 'comment_posted_at', type: 'timestamptz', nullable: true })
+  commentPostedAt: Date | null;
 
   @CreateDateColumn({ name: 'created_at', type: 'timestamptz' })
   createdAt: Date;

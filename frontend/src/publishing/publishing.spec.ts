@@ -3,11 +3,14 @@ import {
   activeAccounts,
   canManageAccounts,
   canSchedulePosts,
+  commentActions,
+  commentText,
   defaultScheduleInput,
   failureText,
   localInputToIso,
   publishActions,
   toLocalInput,
+  validateAccessToken,
   validatePermalinkInput,
   validateScheduleInput,
   type PublishJob,
@@ -140,5 +143,30 @@ describe('ghi nhận đã đăng thủ công', () => {
     expect(validatePermalinkInput('https://www.threads.net.evil.example/@shop.demo/post/AbCdEfGh1', 'shop.demo')).not.toBeNull();
     expect(validatePermalinkInput('https://www.threads.net/@shop.demo', 'shop.demo')).not.toBeNull();
     expect(validatePermalinkInput(ok, 'nguoi.khac')).toContain('@shop.demo');
+  });
+});
+
+describe('comment chứa link', () => {
+  it('chỉ cho thử lại comment lỗi, đúng quyền; lỗi không rõ cần xác nhận', () => {
+    const failedSafe = { commentStatus: 'FAILED', commentFailureKind: 'NOT_SENT' } as const;
+    const failedUnknown = { commentStatus: 'FAILED', commentFailureKind: 'UNKNOWN' } as const;
+    expect(commentActions(failedSafe, 'CONTENT_EDITOR')).toEqual({ canRetry: true, needsConfirm: false });
+    expect(commentActions(failedUnknown, 'OWNER')).toEqual({ canRetry: true, needsConfirm: true });
+    expect(commentActions(failedSafe, 'REVIEWER').canRetry).toBe(false);
+    expect(commentActions({ commentStatus: 'POSTED', commentFailureKind: null }, 'OWNER')).toEqual({ canRetry: false, needsConfirm: false });
+  });
+
+  it('giải thích bằng lời thường và nói rõ bài chính không bị đăng lại', () => {
+    expect(commentText({ commentStatus: 'POSTED', commentFailureKind: null, commentError: null })).toContain('đã được đăng');
+    expect(commentText({ commentStatus: 'FAILED', commentFailureKind: 'NOT_SENT', commentError: 'Vượt hạn mức' })).toContain('an toàn');
+    expect(commentText({ commentStatus: 'FAILED', commentFailureKind: 'UNKNOWN', commentError: null })).toContain('kiểm tra trực tiếp');
+    expect(commentText({ commentStatus: 'FAILED', commentFailureKind: 'UNKNOWN', commentError: null })).toContain('Bài đã đăng');
+  });
+
+  it('kiểm tra token giống máy chủ', () => {
+    expect(validateAccessToken('')).not.toBeNull();
+    expect(validateAccessToken('ngắn')).not.toBeNull();
+    expect(validateAccessToken('THQWabc def 1234567890123456')).not.toBeNull();
+    expect(validateAccessToken('  THQWabc.def-1234567890123456  ')).toBeNull();
   });
 });

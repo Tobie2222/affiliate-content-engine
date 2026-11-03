@@ -4,9 +4,12 @@ import type { ApiPost } from '../content/content';
 import { ConfirmButton } from '../ui/ConfirmButton';
 import type { Role } from '../org/OrgContext';
 import {
+  COMMENT_STATUS_LABEL,
   PUBLISH_STATUS_HINT,
   accountLabel,
   activeAccounts,
+  commentActions,
+  commentText,
   defaultScheduleInput,
   failureText,
   formatVN,
@@ -29,6 +32,7 @@ export function PublishPanel({
   onUnschedule,
   onRetry,
   onMarkPublished,
+  onRetryComment,
 }: {
   post: ApiPost;
   role: Role;
@@ -39,6 +43,7 @@ export function PublishPanel({
   onUnschedule(): Promise<boolean>;
   onRetry(confirmNotPublished: boolean): Promise<boolean>;
   onMarkPublished(permalink: string): Promise<boolean>;
+  onRetryComment(options: { confirmNotPosted?: boolean; alreadyPosted?: boolean }): Promise<boolean>;
 }) {
   const jobs = info?.jobs ?? [];
   const actions = publishActions(post.status, jobs, role);
@@ -70,7 +75,13 @@ export function PublishPanel({
       )}
 
       {post.status === 'PUBLISHED' && info?.published && (
-        <PublishedResult published={info.published} account={accountById.get(info.published.socialAccountId)} />
+        <PublishedResult
+          published={info.published}
+          account={accountById.get(info.published.socialAccountId)}
+          role={role}
+          busy={busy}
+          onRetryComment={onRetryComment}
+        />
       )}
 
       {post.status === 'FAILED' && latest && (
@@ -172,8 +183,22 @@ function ScheduleForm({
   );
 }
 
-function PublishedResult({ published, account }: { published: NonNullable<PostPublishing['published']>; account?: SocialAccount }) {
+function PublishedResult({
+  published,
+  account,
+  role,
+  busy,
+  onRetryComment,
+}: {
+  published: NonNullable<PostPublishing['published']>;
+  account?: SocialAccount;
+  role: Role;
+  busy: boolean;
+  onRetryComment(options: { confirmNotPosted?: boolean; alreadyPosted?: boolean }): Promise<boolean>;
+}) {
   const mock = account?.mode === 'MOCK';
+  const [confirmed, setConfirmed] = useState(false);
+  const comment = commentActions(published, role);
   return (
     <div>
       <p>
@@ -184,6 +209,40 @@ function PublishedResult({ published, account }: { published: NonNullable<PostPu
         <p className="muted small">Đăng giả lập: không có bài thật trên Threads.</p>
       ) : (
         published.permalink && <p className="small"><a href={published.permalink} target="_blank" rel="noreferrer noopener">Mở bài trên Threads</a></p>
+      )}
+      {published.commentStatus !== 'NONE' && (
+        <div>
+          <p className={published.commentStatus === 'FAILED' ? 'notice notice-error' : 'muted small'} role={published.commentStatus === 'FAILED' ? 'alert' : undefined}>
+            <strong>{COMMENT_STATUS_LABEL[published.commentStatus]}.</strong> {commentText(published)}
+          </p>
+          {comment.canRetry && (
+            <div className="form">
+              {comment.needsConfirm && (
+                <label className="radio">
+                  <input type="checkbox" checked={confirmed} onChange={(e) => setConfirmed(e.target.checked)} />
+                  Tôi đã kiểm tra trên Threads và comment này chưa có
+                </label>
+              )}
+              <button
+                type="button"
+                className="btn btn-primary"
+                disabled={busy || (comment.needsConfirm && !confirmed)}
+                onClick={() => void onRetryComment(comment.needsConfirm ? { confirmNotPosted: true } : {})}
+              >
+                Đăng lại comment
+              </button>
+              {comment.needsConfirm && (
+                <ConfirmButton
+                  label="Comment thực ra đã có"
+                  confirmLabel="Xác nhận comment đã có"
+                  disabled={busy}
+                  onConfirm={() => void onRetryComment({ alreadyPosted: true })}
+                />
+              )}
+              <p className="muted small">Chỉ đăng lại comment, bài chính không bị đăng lại. Link được kiểm tra lại trước khi đăng.</p>
+            </div>
+          )}
+        </div>
       )}
     </div>
   );

@@ -4,12 +4,12 @@ import { DevOnlyGuard } from '../../common/guards/dev-only.guard';
 import { CurrentUser, RequirePermission } from '../auth/decorators';
 import { OrgAccessGuard } from '../organizations/org-access.guard';
 import { Permission } from '../organizations/roles';
-import { CreateSocialAccountDto, MarkPublishedDto, RetryPublishDto, SchedulePostDto } from './dto/publishing.dto';
+import { CreateSocialAccountDto, MarkPublishedDto, RetryCommentDto, RetryPublishDto, SchedulePostDto } from './dto/publishing.dto';
 import { PublishingService } from './publishing.service';
 
 type Actor = { id: string };
 
-/** Tài khoản Threads. Hiện chỉ có tài khoản MOCK (chạy thử, không đăng thật). */
+/** Tài khoản Threads: giả lập (chạy thử) hoặc thật (dán token, lưu mã hóa). Không API nào trả token ra ngoài. */
 @ApiTags('social-accounts')
 @ApiBearerAuth()
 @UseGuards(OrgAccessGuard)
@@ -21,6 +21,13 @@ export class SocialAccountsController {
   @Get()
   list(@Param('orgId') orgId: string) {
     return this.publishing.listAccounts(orgId);
+  }
+
+  /** Hệ thống đang ở chế độ giả lập hay Threads thật (giao diện dùng để hiện đúng biểu mẫu kết nối). */
+  @RequirePermission(Permission.SocialRead)
+  @Get('provider')
+  provider() {
+    return this.publishing.providerInfo();
   }
 
   @RequirePermission(Permission.SocialManage)
@@ -92,6 +99,19 @@ export class PublishingController {
     @Body() dto: RetryPublishDto,
   ) {
     return this.publishing.retry(orgId, user.id, postId, dto);
+  }
+
+  /** Thử lại comment chứa link bị lỗi (hoặc ghi nhận comment thực ra đã có). Không bao giờ đăng lại bài chính. */
+  @RequirePermission(Permission.PublishManage)
+  @HttpCode(200)
+  @Post('content/posts/:postId/retry-comment')
+  retryComment(
+    @Param('orgId') orgId: string,
+    @CurrentUser() user: Actor,
+    @Param('postId', new ParseUUIDPipe()) postId: string,
+    @Body() dto: RetryCommentDto,
+  ) {
+    return this.publishing.retryComment(orgId, user.id, postId, dto);
   }
 
   /** Bài đăng thất bại/không rõ kết quả nhưng thực tế đã có trên Threads: ghi nhận đã đăng (người dùng đối soát). */

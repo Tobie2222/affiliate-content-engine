@@ -13,6 +13,12 @@ export class CreateSocialAccountDto {
   @MinLength(1)
   @MaxLength(120)
   displayName: string;
+
+  @ApiPropertyOptional({ description: 'Token truy cập Threads. Chỉ dùng khi hệ thống ở chế độ Threads thật; không bao giờ được trả lại.' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  accessToken?: string;
 }
 
 export class SchedulePostDto {
@@ -58,4 +64,18 @@ export class MarkPublishedDto {
   @ApiProperty({ description: 'Bắt buộc true: bạn đã mở Threads và thấy bài này đang hiển thị.' })
   @IsBoolean()
   confirmPublishedOnThreads: boolean;
+}
+
+export class RetryCommentDto {
+  @ApiPropertyOptional({
+    description: 'Bắt buộc khi lần đăng comment trước không rõ kết quả: xác nhận bạn đã kiểm tra trên Threads và comment CHƯA có.',
+  })
+  @IsOptional()
+  @IsBoolean()
+  confirmNotPosted?: boolean;
+
+  @ApiPropertyOptional({ description: 'Comment thực ra đã có trên Threads: ghi nhận đã đăng, không đăng lại.' })
+  @IsOptional()
+  @IsBoolean()
+  alreadyPosted?: boolean;
 }

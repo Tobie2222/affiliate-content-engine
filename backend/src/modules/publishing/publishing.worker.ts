@@ -17,9 +17,11 @@ export class PublishingProcessor extends WorkerHost {
   }
 
   override async process(): Promise<void> {
-    const { recovered, results } = await this.publishing.runDue();
-    if (recovered > 0 || results.length > 0) {
-      this.logger.log(`runDue: dọn ${recovered} việc treo, xử lý ${results.length} việc`);
+    const { recovered, results, commentsRecovered, commentsHandled } = await this.publishing.runDue();
+    if (recovered > 0 || results.length > 0 || commentsRecovered > 0 || commentsHandled > 0) {
+      this.logger.log(
+        `runDue: dọn ${recovered} việc treo, xử lý ${results.length} việc; comment: dọn ${commentsRecovered} treo, xử lý ${commentsHandled}`,
+      );
     }
   }
 }

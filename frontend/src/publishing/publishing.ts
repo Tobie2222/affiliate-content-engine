@@ -26,18 +26,83 @@ export interface PublishJob {
   createdAt: string;
 }
 
+export type CommentStatus = 'NONE' | 'PENDING' | 'POSTING' | 'POSTED' | 'FAILED';
+
 export interface PublishedInfo {
   id: string;
   socialAccountId: string;
   externalPostId: string;
   permalink: string | null;
   publishedAt: string;
+  /** Comment chứa link affiliate dưới bài chính. */
+  commentStatus: CommentStatus;
+  commentFailureKind: 'NOT_SENT' | 'UNKNOWN' | null;
+  commentError: string | null;
+}
+
+/** Hệ thống đang đăng giả lập (mock) hay lên Threads thật (live). */
+export interface ProviderInfo {
+  mode: 'mock' | 'live';
 }
 
 /** `jobs` mới nhất trước (máy chủ trả theo thứ tự này). */
 export interface PostPublishing {
   jobs: PublishJob[];
   published: PublishedInfo | null;
+}
+
+export const COMMENT_STATUS_LABEL: Record<CommentStatus, string> = {
+  NONE: 'Không có comment',
+  PENDING: 'Chờ đăng comment',
+  POSTING: 'Đang đăng comment',
+  POSTED: 'Đã đăng comment chứa link',
+  FAILED: 'Comment chứa link bị lỗi',
+};
+
+export interface CommentActions {
+  canRetry: boolean;
+  /** Lần trước không rõ kết quả: phải kiểm tra trên Threads trước khi đăng lại. */
+  needsConfirm: boolean;
+}
+
+/** Thử lại comment lỗi cùng quyền với lên lịch đăng. Bài chính không bao giờ bị đăng lại. */
+export function commentActions(published: Pick<PublishedInfo, 'commentStatus' | 'commentFailureKind'>, role: Role): CommentActions {
+  const failed = published.commentStatus === 'FAILED';
+  return {
+    canRetry: failed && canSchedulePosts(role),
+    needsConfirm: failed && published.commentFailureKind !== 'NOT_SENT',
+  };
+}
+
+/** Câu giải thích trạng thái comment bằng lời thường. */
+export function commentText(published: Pick<PublishedInfo, 'commentStatus' | 'commentFailureKind' | 'commentError'>): string {
+  const detail = published.commentError ? ` (${published.commentError})` : '';
+  switch (published.commentStatus) {
+    case 'NONE':
+      return 'Bài này không có comment chứa link.';
+    case 'PENDING':
+      return 'Comment chứa link sẽ được đăng ngay dưới bài trong ít phút.';
+    case 'POSTING':
+      return 'Đang đăng comment chứa link.';
+    case 'POSTED':
+      return 'Link affiliate đã được đăng ở comment dưới bài.';
+    case 'FAILED':
+      return published.commentFailureKind === 'NOT_SENT'
+        ? `Bài đã đăng nhưng comment chứa link chưa được đăng. Thử lại an toàn.${detail}`
+        : `Bài đã đăng. Không rõ comment chứa link đã lên Threads hay chưa: hãy kiểm tra trực tiếp trên Threads trước khi thử lại.${detail}`;
+  }
+}
+
+/** Token Threads chỉ gồm chữ, số, dấu chấm, gạch ngang, gạch dưới (khớp máy chủ). */
+export function validateAccessToken(raw: string): string | null {
+  const token = raw.trim();
+  if (token === '') {
+    return 'Dán access token Threads.';
+  }
+  if (!/^[A-Za-z0-9._-]{20,2000}$/.test(token)) {
+    return 'Token có ký tự không hợp lệ hoặc quá ngắn. Hãy dán lại đúng token, không kèm khoảng trắng hay xuống dòng.';
+  }
+  return null;
 }
 
 /** Khớp ROLE_PERMISSIONS ở máy chủ: publish.manage và social.manage. Máy chủ vẫn kiểm tra lại. */

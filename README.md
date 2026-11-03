@@ -248,3 +248,12 @@ Khi đăng thất bại hoặc không rõ kết quả nhưng bài thực tế đ
 - Link phải là bài Threads (https, threads.net/threads.com, dạng `/@tên/post/mã`) và đúng tài khoản đã chọn để đăng.
 - Bài chuyển FAILED -> PUBLISHED (không đăng lại được), có bản ghi `published_posts` với `external_post_id = manual:<mã>`, ghi nhật ký `publish.marked_manually`.
 - Thời điểm đã đăng không ở tương lai và không sớm hơn lúc bài được lên lịch (ảnh hưởng quy tắc gán đơn hàng cho bài ở trang Phân tích).
+
+## Phase 8: đăng Threads thật, link affiliate ở comment
+
+- `THREADS_PROVIDER=official` + `TOKEN_ENCRYPTION_KEY` (xem `.env.example`, `docs/OPERATIONS.md`) để đăng lên Threads thật.
+- Kết nối tài khoản bằng cách dán token dài hạn (trang Tài khoản Threads). Hệ thống gọi Threads xác thực token, tên tài khoản phải khớp, token lưu mã hóa. Token hết hạn thì tài khoản chuyển `NEEDS_REAUTH` và nhập lại token để kết nối lại.
+- Bài chính = nội dung + dòng công khai hoa hồng; **link affiliate đăng ở comment** ngay dưới bài. Comment có trạng thái riêng (`published_posts.comment_status`): lỗi comment không làm bài đã đăng bị đăng lại; có nút "Đăng lại comment".
+- Chế độ `mock` vẫn dùng cùng luồng (bài chính + comment giả lập). Tài khoản giả lập không đăng được ở chế độ thật và ngược lại.
+- API mới: `GET /social-accounts/provider`, `POST /content/posts/:postId/retry-comment`; `POST /social-accounts` nhận thêm `accessToken` ở chế độ thật.
+- Chưa kiểm chứng với Threads thật; lần chạy thử đầu tiên cần theo dõi và gửi lại thông báo lỗi nếu có.

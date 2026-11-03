@@ -24,22 +24,26 @@ import {
 import { ContentPost } from '../content/entities/content-post.entity';
 import { PostApproval } from '../content/entities/post-approval.entity';
 import { MediaService } from '../media/media.service';
-import { CreateSocialAccountDto, MarkPublishedDto, RetryPublishDto, SchedulePostDto } from './dto/publishing.dto';
+import { CreateSocialAccountDto, MarkPublishedDto, RetryCommentDto, RetryPublishDto, SchedulePostDto } from './dto/publishing.dto';
 import { PublishFailureKind, PublishJob } from './entities/publish-job.entity';
 import { PublishedPost } from './entities/published-post.entity';
 import { SocialAccount } from './entities/social-account.entity';
 import {
   buildIdempotencyKey,
+  COMMENT_PICKUP_SECONDS,
+  composeCommentText,
+  isPlausibleAccessToken,
   isStalePublishing,
   normalizeHandle,
   parseThreadsPermalink,
   sanitizeError,
+  STALE_COMMENT_MINUTES,
   STALE_PUBLISHING_MINUTES,
   validateManualPublishedAt,
   validateScheduleTime,
 } from './publish-rules';
-import { THREADS_PROVIDER, ThreadsProvider, ThreadsPublishError } from './providers/threads-provider.types';
-import { UnavailableThreadsProvider } from './providers/unavailable-threads.provider';
+import { THREADS_PROVIDER, ThreadsProfile, ThreadsProvider, ThreadsPublishError } from './providers/threads-provider.types';
+import { SocialCredentialsService } from './social-credentials.service';
 
 const DUE_BATCH = 10;
 
@@ -70,6 +74,7 @@ export class PublishingService {
     private readonly office: AgentOfficeService,
     private readonly audit: AuditLogsService,
     private readonly config: ConfigService,
+    private readonly credentials: SocialCredentialsService,
   ) {}
 
   // ---------- Tài khoản ----------
@@ -78,38 +83,82 @@ export class PublishingService {
     return this.accounts.find({ where: { organizationId }, order: { createdAt: 'DESC' } });
   }
 
+  /** Cho giao diện biết hệ thống đang ở chế độ giả lập hay Threads thật (để hiện đúng biểu mẫu kết nối). */
+  providerInfo(): { mode: 'mock' | 'live' } {
+    return { mode: this.threads.mode };
+  }
+
   /**
-   * Kết nối tài khoản. Hiện chỉ có tài khoản MOCK (chạy thử, không đăng thật, không lưu token).
-   * Kết nối Threads thật (OAuth) chưa được làm nên bị từ chối rõ ràng thay vì giả vờ thành công.
+   * Kết nối tài khoản.
+   * - Chế độ giả lập (mặc định): tạo tài khoản MOCK, không đăng thật, không lưu token.
+   * - Chế độ Threads thật: cần dán token; hệ thống gọi Threads để xác thực, tên tài khoản phải khớp với token, rồi lưu token ĐÃ MÃ HÓA.
+   * Tài khoản đã ngắt kết nối hoặc cần xác thực lại được kết nối lại (cập nhật token) thay vì báo trùng.
    */
   async createAccount(organizationId: string, actorId: string, dto: CreateSocialAccountDto): Promise<SocialAccount> {
-    if ((this.config.get<string>('THREADS_PROVIDER') ?? 'mock') !== 'mock') {
-      throw UnavailableThreadsProvider.connectError();
-    }
     const handle = normalizeHandle(dto.handle);
     if (!handle) {
       throw new BadRequestException('Tên tài khoản chỉ gồm chữ thường, số, dấu chấm, gạch dưới (tối đa 30 ký tự).');
     }
+    const live = this.threads.mode === 'live';
+    const token = dto.accessToken?.trim() ?? '';
+    let externalAccountId = `mock-${randomUUID()}`;
+    if (live) {
+      if (!token) {
+        throw new BadRequestException('Cần dán access token Threads để kết nối tài khoản thật.');
+      }
+      if (!isPlausibleAccessToken(token)) {
+        throw new BadRequestException('Token có ký tự không hợp lệ (xuống dòng, khoảng trắng...). Hãy dán lại đúng token.');
+      }
+      let profile: ThreadsProfile;
+      try {
+        profile = await this.threads.fetchProfile(token);
+      } catch (error) {
+        if (error instanceof ThreadsPublishError) {
+          throw new BadRequestException(`Token không dùng được: ${sanitizeError(error.message)}`);
+        }
+        throw error;
+      }
+      if (normalizeHandle(profile.username) !== handle) {
+        throw new BadRequestException(`Token thuộc tài khoản @${profile.username.toLowerCase()}, không phải @${handle}.`);
+      }
+      externalAccountId = profile.id;
+    } else if (token) {
+      throw new BadRequestException('Chế độ giả lập không nhận token. Đặt THREADS_PROVIDER=official để kết nối Threads thật.');
+    }
+    const mode = live ? ('OFFICIAL' as const) : ('MOCK' as const);
+    const displayName = dto.displayName.trim();
+
     try {
-      const saved = await this.accounts.save(
-        this.accounts.create({
-          organizationId,
-          platform: 'THREADS',
-          handle,
-          displayName: dto.displayName.trim(),
-          externalAccountId: `mock-${randomUUID()}`,
-          mode: 'MOCK',
-          status: 'ACTIVE',
-          connectedBy: actorId,
-        }),
-      );
+      const existing = await this.accounts.findOne({ where: { organizationId, platform: 'THREADS', handle } });
+      if (existing && existing.status === 'ACTIVE') {
+        throw new ConflictException('Tài khoản này đã được kết nối trong tổ chức.');
+      }
+      const saved = await this.dataSource.transaction(async (manager) => {
+        const repo = manager.getRepository(SocialAccount);
+        let account: SocialAccount;
+        if (existing) {
+          await repo.update(
+            { id: existing.id, organizationId },
+            { displayName, externalAccountId, mode, status: 'ACTIVE', connectedBy: actorId },
+          );
+          account = { ...existing, displayName, externalAccountId, mode, status: 'ACTIVE', connectedBy: actorId };
+        } else {
+          account = await repo.save(
+            repo.create({ organizationId, platform: 'THREADS', handle, displayName, externalAccountId, mode, status: 'ACTIVE', connectedBy: actorId }),
+          );
+        }
+        if (live) {
+          await this.credentials.store(manager, organizationId, account.id, token);
+        }
+        return account;
+      });
       await this.audit.record({
         organizationId,
         actorId,
-        action: 'social_account.connected',
+        action: existing ? 'social_account.reconnected' : 'social_account.connected',
         entityType: 'social_account',
         entityId: saved.id,
-        metadata: { handle, mode: 'MOCK' },
+        metadata: { handle, mode },
       });
       return saved;
     } catch (error) {
@@ -130,6 +179,7 @@ export class PublishingService {
       );
     }
     await this.accounts.update({ id: account.id, organizationId }, { status: 'DISCONNECTED' });
+    await this.credentials.remove(organizationId, account.id);
     await this.audit.record({
       organizationId,
       actorId,
@@ -374,8 +424,12 @@ export class PublishingService {
   // ---------- Worker ----------
 
   /** Một vòng xử lý: dọn việc treo, rồi đăng các việc đã đến giờ. Gọi định kỳ bởi worker hoặc thủ công (dev). */
-  async runDue(now = new Date(), organizationId?: string): Promise<{ recovered: number; results: Array<{ jobId: string; outcome: JobOutcome }> }> {
+  async runDue(
+    now = new Date(),
+    organizationId?: string,
+  ): Promise<{ recovered: number; results: Array<{ jobId: string; outcome: JobOutcome }>; commentsRecovered: number; commentsHandled: number }> {
     const recovered = await this.recoverStale(now, organizationId);
+    const commentsRecovered = await this.recoverStaleComments(now, organizationId);
     const due = await this.jobs.find({
       where: { status: 'QUEUED', scheduledFor: LessThanOrEqual(now), ...(organizationId ? { organizationId } : {}) },
       order: { scheduledFor: 'ASC' },
@@ -390,7 +444,8 @@ export class PublishingService {
         results.push({ jobId: job.id, outcome: 'SKIPPED' });
       }
     }
-    return { recovered, results };
+    const commentsHandled = await this.pickUpPendingComments(now, organizationId);
+    return { recovered, results, commentsRecovered, commentsHandled };
   }
 
   /** Việc PUBLISHING quá lâu: không rõ bài đã đăng hay chưa. Không tự thử lại, chờ người đối soát. */
@@ -506,15 +561,29 @@ export class PublishingService {
       return 'SKIPPED';
     }
 
-    const text = composeText(post.body, post.disclosureText, runtime.affiliateUrl);
+    // Bài chính chỉ có nội dung + dòng công khai hoa hồng; link affiliate đăng ở comment ngay dưới bài.
+    const text = composeText(post.body, post.disclosureText, null);
+    let accessToken: string | null = null;
+    if (account.mode === 'OFFICIAL') {
+      try {
+        accessToken = await this.credentials.tokenFor(job.organizationId, account.id);
+      } catch {
+        await this.failPublishing(job, post.id, 'NOT_SENT', 'Không đọc được token đã lưu (sai TOKEN_ENCRYPTION_KEY?). Hãy kết nối lại tài khoản.', now);
+        return 'FAILED';
+      }
+    }
+    let published: PublishedPost;
+    let externalPostId: string;
     try {
       const result = await this.threads.publishText({
         idempotencyKey: job.idempotencyKey,
         accountExternalId: account.externalAccountId ?? '',
+        accessToken,
         text,
         hasMedia: post.mediaAssetId !== null,
       });
-      await this.dataSource.transaction(async (manager) => {
+      externalPostId = result.externalPostId;
+      published = await this.dataSource.transaction(async (manager) => {
         const jobResult = await manager.getRepository(PublishJob).update(
           { id: job.id, status: 'PUBLISHING' },
           { status: 'SUCCEEDED', finishedAt: now, externalPostId: result.externalPostId },
@@ -527,7 +596,7 @@ export class PublishingService {
           throw new ConflictException('Không ghi được kết quả đăng.');
         }
         const repo = manager.getRepository(PublishedPost);
-        await repo.save(
+        return repo.save(
           repo.create({
             organizationId: job.organizationId,
             contentPostId: post.id,
@@ -536,18 +605,10 @@ export class PublishingService {
             externalPostId: result.externalPostId,
             permalink: result.permalink,
             publishedAt: now,
+            commentStatus: runtime.affiliateUrl ? 'PENDING' : 'NONE',
           }),
         );
       });
-      await this.audit.record({
-        organizationId: job.organizationId,
-        action: 'publish.succeeded',
-        entityType: 'content_post',
-        entityId: post.id,
-        metadata: { jobId: job.id, externalPostId: result.externalPostId, mode: this.threads.mode },
-      });
-      await this.safeEmit(job.organizationId, AgentEventType.TaskCompleted, 'Đã đăng bài');
-      return 'PUBLISHED';
     } catch (error) {
       // Nếu lỗi nằm ở bước GHI KẾT QUẢ sau khi đã đăng, việc vẫn ở PUBLISHING và sẽ được đánh dấu UNKNOWN khi quá hạn.
       const wrote = error instanceof ConflictException;
@@ -557,7 +618,227 @@ export class PublishingService {
       const kind: PublishFailureKind = error instanceof ThreadsPublishError ? error.kind : 'UNKNOWN';
       const message = error instanceof ThreadsPublishError ? sanitizeError(error.message) : 'Lỗi không xác định khi gửi bài đi.';
       await this.failPublishing(job, post.id, kind, message, now);
+      if (error instanceof ThreadsPublishError && error.reason === 'AUTH') {
+        await this.markNeedsReauth(job.organizationId, account.id);
+      }
       return 'FAILED';
+    }
+    await this.audit.record({
+      organizationId: job.organizationId,
+      action: 'publish.succeeded',
+      entityType: 'content_post',
+      entityId: post.id,
+      metadata: { jobId: job.id, externalPostId, mode: this.threads.mode },
+    });
+    await this.safeEmit(job.organizationId, AgentEventType.TaskCompleted, 'Đã đăng bài');
+    // Comment chứa link: lỗi ở đây KHÔNG ảnh hưởng bài đã đăng (xem attemptComment).
+    await this.attemptComment(job.organizationId, published.id, now);
+    return 'PUBLISHED';
+  }
+
+  // ---------- Comment chứa link affiliate ----------
+
+  /**
+   * Đăng comment chứa link dưới bài chính. Chỉ một tiến trình thắng quyền gửi (PENDING -> POSTING có điều kiện).
+   * Kết quả ghi vào published_posts.comment_*: lỗi comment không bao giờ làm bài đã đăng bị đăng lại.
+   * Link được kiểm tra lại ngay trước khi gửi; link không còn hợp lệ thì KHÔNG đăng.
+   */
+  async attemptComment(organizationId: string, publishedId: string, now = new Date()): Promise<'POSTED' | 'FAILED' | 'SKIPPED'> {
+    const row = await this.published.findOne({ where: { id: publishedId, organizationId } });
+    if (!row || row.commentStatus !== 'PENDING') {
+      return 'SKIPPED';
+    }
+    const claim = await this.published.update(
+      { id: row.id, organizationId, commentStatus: 'PENDING', commentAttempts: row.commentAttempts },
+      { commentStatus: 'POSTING', commentAttempts: row.commentAttempts + 1, commentStartedAt: now },
+    );
+    if (claim.affected !== 1) {
+      return 'SKIPPED';
+    }
+    const fail = async (kind: PublishFailureKind, message: string, reauth = false): Promise<'FAILED'> => {
+      await this.published.update(
+        { id: row.id, organizationId, commentStatus: 'POSTING' },
+        { commentStatus: 'FAILED', commentFailureKind: kind, commentError: sanitizeError(message) },
+      );
+      await this.audit.record({
+        organizationId,
+        action: 'publish.comment_failed',
+        entityType: 'content_post',
+        entityId: row.contentPostId,
+        metadata: { publishedPostId: row.id, kind },
+      });
+      if (reauth) {
+        await this.markNeedsReauth(organizationId, row.socialAccountId);
+      }
+      return 'FAILED';
+    };
+
+    let post: ContentPost;
+    let account: SocialAccount;
+    let affiliateUrl: string;
+    try {
+      post = await this.requirePost(organizationId, row.contentPostId);
+      account = await this.requireAccount(organizationId, row.socialAccountId);
+      const link = await this.links.get(organizationId, post.affiliateLinkId);
+      if (link.productId !== post.productId || !link.publishable.ok) {
+        const why = link.publishable.ok ? 'không thuộc sản phẩm của bài' : link.publishable.reason;
+        return await fail('NOT_SENT', `Link affiliate không còn đăng được nên chưa đăng comment: ${why}`);
+      }
+      affiliateUrl = link.affiliateUrl;
+    } catch {
+      return fail('NOT_SENT', 'Không kiểm tra lại được bài, tài khoản hoặc link affiliate nên chưa đăng comment.');
+    }
+    if (account.status !== 'ACTIVE') {
+      return fail('NOT_SENT', 'Tài khoản Threads không ở trạng thái hoạt động nên chưa đăng comment. Hãy kết nối lại rồi thử lại.');
+    }
+    let accessToken: string | null = null;
+    if (account.mode === 'OFFICIAL') {
+      try {
+        accessToken = await this.credentials.tokenFor(organizationId, account.id);
+      } catch {
+        return fail('NOT_SENT', 'Không đọc được token đã lưu (sai TOKEN_ENCRYPTION_KEY?). Hãy kết nối lại tài khoản.');
+      }
+    }
+    try {
+      const result = await this.threads.publishReply({
+        idempotencyKey: `ace:comment:${row.id}`,
+        accountExternalId: account.externalAccountId ?? '',
+        accessToken,
+        replyToExternalId: row.externalPostId,
+        text: composeCommentText(affiliateUrl),
+      });
+      await this.published.update(
+        { id: row.id, organizationId, commentStatus: 'POSTING' },
+        { commentStatus: 'POSTED', commentExternalId: result.externalPostId, commentPostedAt: now, commentFailureKind: null, commentError: null },
+      );
+      await this.audit.record({
+        organizationId,
+        action: 'publish.comment_posted',
+        entityType: 'content_post',
+        entityId: row.contentPostId,
+        metadata: { publishedPostId: row.id, commentExternalId: result.externalPostId },
+      });
+      return 'POSTED';
+    } catch (error) {
+      const typed = error instanceof ThreadsPublishError;
+      return fail(typed ? error.kind : 'UNKNOWN', typed ? error.message : 'Lỗi không xác định khi gửi comment.', typed && error.reason === 'AUTH');
+    }
+  }
+
+  /**
+   * Thử lại comment lỗi. Nếu lần trước không rõ kết quả (UNKNOWN) phải xác nhận đã kiểm tra trên Threads và comment chưa có
+   * (confirmNotPosted), hoặc báo comment thực ra đã có (alreadyPosted) để ghi nhận mà không đăng lại.
+   */
+  async retryComment(organizationId: string, actorId: string, postId: string, dto: RetryCommentDto) {
+    await this.requirePost(organizationId, postId);
+    const row = await this.published.findOne({ where: { organizationId, contentPostId: postId } });
+    if (!row) {
+      throw new ConflictException('Bài chưa được đăng.');
+    }
+    if (row.commentStatus !== 'FAILED') {
+      throw new ConflictException(`Chỉ thử lại được comment bị lỗi (hiện là ${row.commentStatus}).`);
+    }
+    if (dto.alreadyPosted === true && dto.confirmNotPosted === true) {
+      throw new BadRequestException('Chỉ chọn một: comment đã có hoặc comment chưa có.');
+    }
+    if (dto.alreadyPosted === true) {
+      const done = await this.published.update(
+        { id: row.id, organizationId, commentStatus: 'FAILED' },
+        { commentStatus: 'POSTED', commentExternalId: 'manual', commentPostedAt: new Date(), commentFailureKind: null, commentError: null },
+      );
+      if (done.affected !== 1) {
+        throw new ConflictException('Comment vừa thay đổi. Hãy tải lại.');
+      }
+      await this.audit.record({
+        organizationId,
+        actorId,
+        action: 'publish.comment_marked_posted',
+        entityType: 'content_post',
+        entityId: postId,
+        metadata: { publishedPostId: row.id, previousFailureKind: row.commentFailureKind },
+      });
+      return this.getForPost(organizationId, postId);
+    }
+    if (row.commentFailureKind !== 'NOT_SENT' && dto.confirmNotPosted !== true) {
+      throw new ConflictException(
+        'Lần đăng comment trước không rõ kết quả: comment có thể đã có trên Threads. Hãy kiểm tra trực tiếp; nếu chưa có comment, gửi lại kèm xác nhận.',
+      );
+    }
+    const reopened = await this.published.update(
+      { id: row.id, organizationId, commentStatus: 'FAILED' },
+      { commentStatus: 'PENDING', commentFailureKind: null, commentError: null },
+    );
+    if (reopened.affected !== 1) {
+      throw new ConflictException('Comment vừa thay đổi. Hãy tải lại.');
+    }
+    await this.audit.record({
+      organizationId,
+      actorId,
+      action: 'publish.comment_retry_requested',
+      entityType: 'content_post',
+      entityId: postId,
+      metadata: { publishedPostId: row.id, previousFailureKind: row.commentFailureKind, confirmedNotPosted: dto.confirmNotPosted === true },
+    });
+    await this.attemptComment(organizationId, row.id);
+    return this.getForPost(organizationId, postId);
+  }
+
+  /** Comment đang gửi quá lâu: không rõ kết quả, không tự thử lại. */
+  async recoverStaleComments(now: Date, organizationId?: string): Promise<number> {
+    const cutoff = new Date(now.getTime() - STALE_COMMENT_MINUTES * 60_000);
+    const stale = await this.published.find({
+      where: { commentStatus: 'POSTING', commentStartedAt: LessThan(cutoff), ...(organizationId ? { organizationId } : {}) },
+    });
+    let recovered = 0;
+    for (const row of stale) {
+      const moved = await this.published.update(
+        { id: row.id, commentStatus: 'POSTING', commentAttempts: row.commentAttempts },
+        {
+          commentStatus: 'FAILED',
+          commentFailureKind: 'UNKNOWN',
+          commentError: 'Quá thời gian chờ phản hồi: chưa rõ comment đã được đăng hay chưa. Hãy kiểm tra trên Threads.',
+        },
+      );
+      if (moved.affected === 1) {
+        recovered += 1;
+        await this.audit.record({
+          organizationId: row.organizationId,
+          action: 'publish.comment_recovered_unknown',
+          entityType: 'content_post',
+          entityId: row.contentPostId,
+          metadata: { publishedPostId: row.id },
+        });
+      }
+    }
+    return recovered;
+  }
+
+  /** Đăng bù các comment còn PENDING (tiến trình dừng giữa lúc đăng bài và đăng comment). */
+  private async pickUpPendingComments(now: Date, organizationId?: string): Promise<number> {
+    const cutoff = new Date(now.getTime() - COMMENT_PICKUP_SECONDS * 1000);
+    const pending = await this.published.find({
+      where: { commentStatus: 'PENDING', publishedAt: LessThanOrEqual(cutoff), ...(organizationId ? { organizationId } : {}) },
+      order: { publishedAt: 'ASC' },
+      take: DUE_BATCH,
+    });
+    let handled = 0;
+    for (const row of pending) {
+      if ((await this.attemptComment(row.organizationId, row.id, now)) !== 'SKIPPED') {
+        handled += 1;
+      }
+    }
+    return handled;
+  }
+
+  private async markNeedsReauth(organizationId: string, accountId: string): Promise<void> {
+    const result = await this.accounts.update({ id: accountId, organizationId, status: 'ACTIVE' }, { status: 'NEEDS_REAUTH' });
+    if (result.affected === 1) {
+      await this.audit.record({
+        organizationId,
+        action: 'social_account.needs_reauth',
+        entityType: 'social_account',
+        entityId: accountId,
+      });
     }
   }
 
@@ -659,6 +940,15 @@ export class PublishingService {
     let socialAccountActive = account.status === 'ACTIVE';
     if (!socialAccountActive) {
       failures.push('Tài khoản Threads không ở trạng thái hoạt động.');
+    }
+    const live = this.threads.mode === 'live';
+    if (account.mode === 'MOCK' && live) {
+      socialAccountActive = false;
+      failures.push('Tài khoản giả lập không thể đăng khi hệ thống đang ở chế độ Threads thật.');
+    }
+    if (account.mode === 'OFFICIAL' && !live) {
+      socialAccountActive = false;
+      failures.push('Tài khoản Threads thật không thể đăng khi hệ thống đang ở chế độ giả lập (THREADS_PROVIDER=mock).');
     }
     if (account.mode === 'MOCK' && production) {
       socialAccountActive = false;

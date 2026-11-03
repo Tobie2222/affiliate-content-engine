@@ -14,7 +14,9 @@ Tài liệu cho người chạy hệ thống (dev hoặc triển khai thật). N
 | `LLM_PROVIDER` | không | `mock` (mặc định) hoặc `claude`. |
 | `ANTHROPIC_API_KEY` | khi `claude` | Chỉ để ở backend. Thiếu hoặc là `CHANGE_ME` thì backend không khởi động. |
 | `ANTHROPIC_MODEL` | không | Trống = `claude-haiku-5-5`. |
-| `SHOPEE_PROVIDER`, `THREADS_PROVIDER` | không | Hiện chỉ `mock` dùng được. `official` bị từ chối rõ ràng (chưa có tích hợp thật). |
+| `SHOPEE_PROVIDER` | không | Hiện chỉ `mock` (chưa có tích hợp Shopee thật). |
+| `THREADS_PROVIDER` | không | `mock` (mặc định, không đăng thật) hoặc `official` (đăng lên Threads thật qua graph.threads.com). |
+| `TOKEN_ENCRYPTION_KEY` | khi `THREADS_PROVIDER=official` | Chuỗi base64 của 32 byte ngẫu nhiên, dùng mã hóa token Threads (AES-256-GCM). Thiếu hoặc sai thì backend không khởi động. Tạo: `node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"`. |
 | `APP_ROLE` | không | `api`, `worker`, `all`. Với `api`, tiến trình không đặt nhịp worker. Lưu ý: tiến trình `api` vẫn đăng ký bộ xử lý hàng đợi; vì việc đăng bài được nhận bằng cập nhật có điều kiện trong PostgreSQL nên chạy nhiều tiến trình vẫn không đăng trùng. |
 
 ## 2. Các tiến trình nền
@@ -32,10 +34,14 @@ Mất Redis: lịch không mất (nằm ở PostgreSQL), việc đăng chỉ ch�
 |---|---|---|
 | Bài `BLOCKED` sau khi lên lịch | Ngay trước giờ đăng, link, giấy phép hoặc tài khoản không còn hợp lệ. Bài KHÔNG được đăng. | Đọc lý do ở trang bài, sửa nguyên nhân, đưa bài về nháp, duyệt lại. |
 | Bài `FAILED`, lỗi "chưa được gửi đi" | Chắc chắn chưa gửi lên Threads. | Bấm "Thử đăng lại". |
-| Bài `FAILED`, "không rõ bài đã lên chưa" | Hết thời gian chờ hoặc việc kẹt quá 10 phút. Bài có thể đã lên. | Mở Threads kiểm tra. Nếu chưa có bài: thử lại kèm xác nhận. Nếu đã có: không thử lại (đăng thật chưa có chức năng "đánh dấu đã đăng" nên cần xử lý tay trong DB). |
+| Bài `FAILED`, "không rõ bài đã lên chưa" | Hết thời gian chờ hoặc việc kẹt quá 10 phút. Bài có thể đã lên. | Mở Threads kiểm tra. Nếu chưa có bài: thử lại kèm xác nhận. Nếu đã có: dùng mục "Bài thực ra đã có trên Threads", dán link bài (không thử lại, tránh đăng trùng). |
 | Việc nằm `QUEUED` mãi | Agent "Đăng bài" đang tạm dừng, hoặc không có tiến trình worker. | Bỏ tạm dừng ở Văn phòng AI; kiểm tra tiến trình chạy `APP_ROLE=worker` hoặc `all`. Ở dev có thể gọi `POST /organizations/:orgId/publishing/run-due`. |
 
-Thông tin lỗi lưu ở `publish_jobs.last_error` và nhật ký `audit_logs` (`publish.*`).
+| Bài đã đăng nhưng comment link `FAILED`, "thử lại an toàn" | Comment chắc chắn chưa lên. | Bấm "Đăng lại comment". Bài chính không bị đăng lại. |
+| Comment link `FAILED`, "không rõ" | Mất kết nối hoặc kẹt quá 10 phút. Comment có thể đã lên. | Mở Threads kiểm tra. Chưa có: "Đăng lại comment" kèm xác nhận. Đã có: "Comment thực ra đã có". |
+| Tài khoản `NEEDS_REAUTH` | Threads trả lỗi xác thực (token hết hạn ~60 ngày, bị thu hồi, thiếu quyền). Các bài chờ đăng của tài khoản này sẽ bị chặn. | Vào Tài khoản Threads, nhập lại token mới để kết nối lại, rồi thử lại bài. |
+
+Thông tin lỗi lưu ở `publish_jobs.last_error` và `published_posts.comment_error` và nhật ký `audit_logs` (`publish.*`).
 
 ## 4. Khóa API
 
@@ -43,6 +49,14 @@ Thông tin lỗi lưu ở `publish_jobs.last_error` và nhật ký `audit_logs` 
 - Lộ khóa (dán vào chat, commit nhầm): xóa khóa trong Anthropic Console, tạo khóa mới, cập nhật `.env`, khởi động lại. Khóa đã commit vẫn nằm trong lịch sử git, nên xóa khóa ở Console mới là bước bắt buộc.
 - Lỗi khi gọi Claude được chuyển thành 503/502 với thông báo chung, không kèm khóa hay nội dung lỗi gốc.
 - Đặt hạn mức chi tiêu hằng tháng ở workspace riêng trên Console.
+
+### Đăng Threads thật (THREADS_PROVIDER=official)
+
+- Mỗi bài gồm hai lần gọi: bài chính (nội dung + dòng công khai hoa hồng) rồi comment chứa link affiliate.
+- Threads **không có khóa chống trùng**. Hệ thống chỉ thử lại tự động khi chắc chắn chưa gửi; mọi trường hợp mơ hồ (mất mạng, 5xx ở bước publish) đều dừng và chờ người kiểm tra.
+- Token lưu mã hóa trong bảng `social_account_credentials`, không có API nào trả ra, bị xóa khi ngắt kết nối. Không ghi token vào log, nhật ký hay thông báo lỗi.
+- Đổi hoặc mất `TOKEN_ENCRYPTION_KEY`: không giải mã được token cũ, các bài sẽ thất bại "chưa gửi đi" cho đến khi kết nối lại từng tài khoản. Chưa hỗ trợ xoay khóa tự động.
+- Chưa tự gia hạn token (60 ngày) và chưa có đăng nhập OAuth: dán token dài hạn lấy từ Meta for Developers.
 
 ## 5. Sao lưu
 
@@ -61,7 +75,6 @@ Hãy thử khôi phục vào một database trống trước khi tin vào bản 
 
 ## 7. Giới hạn hiện tại
 
-- Không đăng được lên Threads thật, không lấy được số liệu hay đơn hàng từ API (chỉ giả lập, nhập tay, nhập CSV).
+- Đăng Threads thật mới chạy thử được ở chế độ Meta Developer (tài khoản tester), chưa được kiểm chứng trên Threads thật trong CI; chỉ đăng văn bản (chưa đăng kèm ảnh). Không lấy được số liệu hay đơn hàng từ API (nhập tay hoặc CSV).
 - Media: chưa có kho tệp; chỉ quản lý giấy phép và đường dẫn nguồn.
-- Chưa có chức năng "đánh dấu bài đã đăng thủ công" khi kết quả không rõ.
 - Chưa có Dockerfile và cấu hình triển khai production.

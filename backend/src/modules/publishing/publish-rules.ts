@@ -3,6 +3,10 @@ export const MAX_SCHEDULE_DAYS = 60;
 /** Việc ở trạng thái PUBLISHING quá lâu: coi như không rõ kết quả. */
 export const STALE_PUBLISHING_MINUTES = 10;
 export const MAX_ERROR_CHARS = 500;
+/** Comment đang gửi quá lâu: coi như không rõ kết quả. */
+export const STALE_COMMENT_MINUTES = 10;
+/** Bài đã đăng nhưng comment vẫn PENDING quá lâu (tiến trình dừng giữa chừng): worker sẽ đăng bù. */
+export const COMMENT_PICKUP_SECONDS = 30;
 
 export type ScheduleTimeCheck = { ok: true } | { ok: false; reason: string };
 
@@ -83,4 +87,14 @@ export function validateManualPublishedAt(at: Date, notBefore: Date, now: Date):
     return { ok: false, reason: 'Thời điểm đã đăng không được sớm hơn lúc bài được lên lịch.' };
   }
   return { ok: true };
+}
+
+/** Nội dung comment chứa link affiliate. Dòng công khai hoa hồng nằm ở bài chính. */
+export function composeCommentText(affiliateUrl: string): string {
+  return `Link sản phẩm: ${affiliateUrl}`;
+}
+
+/** Token Threads chỉ gồm chữ, số, dấu chấm, gạch ngang, gạch dưới. Chặn ký tự lạ (xuống dòng, khoảng trắng...) trước khi dùng. */
+export function isPlausibleAccessToken(token: string): boolean {
+  return /^[A-Za-z0-9._-]{20,2000}$/.test(token);
 }

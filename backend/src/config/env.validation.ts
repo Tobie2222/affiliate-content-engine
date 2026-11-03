@@ -1,4 +1,5 @@
 import { plainToInstance } from 'class-transformer';
+import { checkEncryptionKey } from '../modules/publishing/token-cipher';
 import { LLM_PROVIDER_MODES, checkLlmConfig } from './llm-config';
 import {
   IsEnum,
@@ -116,6 +117,15 @@ export class EnvironmentVariables {
 
   @IsEnum(ProviderMode)
   THREADS_PROVIDER: ProviderMode = ProviderMode.Mock;
+
+  /**
+   * Khóa mã hóa token Threads (AES-256-GCM): chuỗi base64 của 32 byte ngẫu nhiên.
+   * Bắt buộc khi THREADS_PROVIDER=official. Tạo: node -e "console.log(require('crypto').randomBytes(32).toString('base64'))"
+   * Mất khóa = phải kết nối lại tài khoản. Không commit, không đưa vào frontend.
+   */
+  @IsOptional()
+  @IsString()
+  TOKEN_ENCRYPTION_KEY?: string;
 }
 
 const PLACEHOLDER_MARKER = 'CHANGE_ME';
@@ -142,6 +152,13 @@ export function validateEnv(
   const llmErrors = checkLlmConfig(validated);
   if (llmErrors.length > 0) {
     throw new Error(`Cấu hình môi trường không hợp lệ -> ${llmErrors.join('; ')}`);
+  }
+
+  if (validated.THREADS_PROVIDER === ProviderMode.Official) {
+    const keyProblem = checkEncryptionKey(validated.TOKEN_ENCRYPTION_KEY);
+    if (keyProblem) {
+      throw new Error(`Cấu hình môi trường không hợp lệ -> ${keyProblem} (bắt buộc khi THREADS_PROVIDER=official)`);
+    }
   }
 
   if (validated.NODE_ENV === NodeEnv.Production) {
